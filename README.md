@@ -79,7 +79,7 @@ assert.eql(clusters, [
 ])
 ```
 
-### addCluster(name, props, [secretProps], [channels])
+### registerCluster(name, props, [secretProps], [channels])
 
 Registers a single cluster in the system.  `props` go in Redis, `secretProps` go in vault.  You can also optionally list the channels the cluster should be in.  An error will be thrown if any of the channels do not exist.
 
@@ -95,9 +95,9 @@ Modify an existing cluster, replacing the existing `props` and `secretProps` wit
 await client.updateCluster('some-cluster', {key: 'arbitrary'}, {password: 'hunter3'})
 ```
 
-### removeCluster(name)
+### unregisterCluster(name)
 
-Un-registry a cluster with the system.  Channel associations will also be removed.
+Un-register a cluster with the system.  Channel associations will also be removed.
 
 ```js
 await client.removeCluster('some-cluster')
