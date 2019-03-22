@@ -6,7 +6,7 @@ It can store and fetch non-sensitive information in Redis, and secret informatio
 
 It also manages grouping clusters into "channels". Channels are free-form, and a cluster can be placed into any number of channels.  Example uses for channels are deployment groups, environments, zones, or any other grouping of clusters you would want to perform concurrent operations on as a set.
 
-This is intended for use inside fabrik8, kubeform, command hub, and others.
+This is intended for use inside fabrik8, kubeform, command hub, support hub, and others.
 
 
 ## Usage
@@ -36,7 +36,7 @@ Redis will have:
 
 - a series of `cluster:${clusterName}` hashes for arbitrary, non-sensitive cluster info
 - a `channels` set of `[...channelNames]` enumerating all the channel names
-- the `clusters:${clusterName}` hash has a `channels` key of all of its channels, comma separated, e.g. `[...channelNames].join()`
+- the `cluster:${clusterName}` hash has a `channels` key of all of its channels, comma separated, e.g. `[...channelNames].join()`
 - a series of `channels:${channelName}` sets of `[...clusterNames]`, that enumerates all clusters within a given channel
 
 ### Vault
