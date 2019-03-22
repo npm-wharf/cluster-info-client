@@ -9,28 +9,22 @@ module.exports = function createClient (options = {}) {
   } = options
 
   const redis = new Redis(redisUrl)
-  let closed = false
-
-  const preventReuse = fn => (...args) => {
-    if (closed) throw new Error('package-info-client has been disconnected')
-    return fn(...args)
-  }
 
   return {
-    createChannel: preventReuse(createChannel),
-    deleteChannel: preventReuse(deleteChannel),
-    listChannels: preventReuse(listChannels),
+    createChannel,
+    deleteChannel,
+    listChannels,
 
-    registerCluster: preventReuse(registerCluster),
-    updateCluster: preventReuse(updateCluster),
-    unregisterCluster: preventReuse(unregisterCluster),
-    listClusters: preventReuse(listClusters),
-    getCluster: preventReuse(getCluster),
+    registerCluster,
+    updateCluster,
+    unregisterCluster,
+    listClusters,
+    getCluster,
 
-    addClusterToChannel: preventReuse(addClusterToChannel),
-    removeClusterFromChannel: preventReuse(removeClusterFromChannel),
+    addClusterToChannel,
+    removeClusterFromChannel,
 
-    close: preventReuse(close)
+    close
   }
 
   async function registerCluster (name, props, secretProps = {}, channels = []) {
@@ -149,7 +143,6 @@ module.exports = function createClient (options = {}) {
 
   function close () {
     redis.disconnect()
-    closed = true
   }
 
   function _setClusterProps (txn, name, props) {

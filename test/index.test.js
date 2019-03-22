@@ -279,5 +279,5 @@ tap.test('removeClusterFromChannel', async t => {
 tap.test('prevent client re-use after close', async t => {
   const client = createClient()
   client.close()
-  t.throws(() => client.listClusters())
+  t.rejects(async () => client.listClusters())
 })
