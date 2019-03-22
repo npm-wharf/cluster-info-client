@@ -275,3 +275,9 @@ tap.test('removeClusterFromChannel', async t => {
     redis.disconnect()
   })
 })
+
+tap.test('prevent client re-use after close', async t => {
+  const client = createClient()
+  client.close()
+  t.throws(() => client.listClusters())
+})
