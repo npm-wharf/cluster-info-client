@@ -75,6 +75,9 @@ tap.test('channels', async t => {
 tap.test('registerCluster', async t => {
   const client = createClient()
   const redis = new Redis()
+  const badClient = createInfoClient({
+    vaultHost: 'http://vault.dev:8200', vaultToken: 's.bad'
+  })
 
   t.test('setup', async t => {
     await client.createChannel('default')
@@ -124,6 +127,7 @@ tap.test('registerCluster', async t => {
 
   t.test('cleanup', async () => {
     client.close()
+    badClient.close()
     redis.disconnect()
   })
 })
@@ -353,6 +357,163 @@ tap.test('removeClusterFromChannel', async t => {
 
   t.test('fails if channel does not exist', async t => {
     await t.rejects(client.removeClusterFromChannel('my-cluster', 'bogus'))
+  })
+
+  t.test('cleanup', async () => {
+    client.close()
+    redis.disconnect()
+  })
+})
+
+const SA_1 = {
+  'type': 'service_account',
+  'project_id': 'my-project',
+  'private_key_id': 'cccaedf234c3a4de25fce3adf245cfae352d4',
+  'private_key': '-----BEGIN PRIVATE KEY-----\ndeadb33f\n-----END PRIVATE KEY-----\n',
+  'client_email': 'my-sa1@my-project.iam.gserviceaccount.com',
+  'client_id': '22349780582375098234759',
+  'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+  'token_uri': 'https://oauth2.googleapis.com/token',
+  'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
+  'client_x509_cert_url': 'https://www.googleapis.com/robot/v1/metadata/x509/my-sa1%40my-project.iam.gserviceaccount.com'
+}
+const SA_2 = {
+  'type': 'service_account',
+  'project_id': 'my-project',
+  'private_key_id': 'cade3f45543cef5ac34ef453caef',
+  'private_key': '-----BEGIN PRIVATE KEY-----\ndeade2b33f\n-----END PRIVATE KEY-----\n',
+  'client_email': 'my-sa2@my-project.iam.gserviceaccount.com',
+  'client_id': '293465902347580',
+  'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+  'token_uri': 'https://oauth2.googleapis.com/token',
+  'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
+  'client_x509_cert_url': 'https://www.googleapis.com/robot/v1/metadata/x509/my-sa2%40my-project.iam.gserviceaccount.com'
+}
+const BAD_SA = {
+  'type': 'service_account',
+  'project_id': 'my-project',
+  'private_key_id': 'cade3f45543cef5ac34ef453caef',
+  'private_key': '-----BEGIN PRIVATE KEY-----\ndeade2b33f\n-----END PRIVATE KEY-----\n',
+  'client_id': '293465902347580',
+  'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+  'token_uri': 'https://oauth2.googleapis.com/token',
+  'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
+  'client_x509_cert_url': 'https://www.googleapis.com/robot/v1/metadata/x509/my-sa2%40my-project.iam.gserviceaccount.com'
+}
+
+tap.test('addServiceAccount', async t => {
+  const client = createClient()
+  const redis = new Redis()
+
+  t.test('setup', async t => {
+  })
+
+  t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .put('/v1/secret/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
+      .reply(200)
+
+    await client.addServiceAccount(SA_1)
+
+    vaultMock.done()
+  })
+
+  t.test('failts if missing client_email', async t => {
+    t.rejects(() => client.addServiceAccount(BAD_SA))
+  })
+
+  t.test('cleanup', async () => {
+    client.close()
+    redis.disconnect()
+  })
+})
+
+tap.test('getServiceAccount', async t => {
+  const client = createClient()
+  const redis = new Redis()
+
+  t.test('setup', async t => {
+  })
+
+  t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/secret/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
+      .reply(200, { data: { data: { value: JSON.stringify(SA_1) } } })
+
+    const result = await client.getServiceAccount('my-sa1@my-project.iam.gserviceaccount.com')
+
+    t.same(result, SA_1)
+
+    vaultMock.done()
+  })
+
+  t.test('cleanup', async () => {
+    client.close()
+    redis.disconnect()
+  })
+})
+
+tap.test('removeServiceAccount', async t => {
+  const client = createClient()
+  const redis = new Redis()
+
+  t.test('setup', async t => {
+  })
+
+  t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .put('/v1/secret/data/credentials/google/my-sa2@my-project.iam.gserviceaccount.com')
+      .reply(200)
+      .delete('/v1/secret/data/credentials/google/my-sa2@my-project.iam.gserviceaccount.com')
+      .reply(200)
+
+    await client.addServiceAccount(SA_2)
+
+    await client.removeServiceAccount('my-sa2@my-project.iam.gserviceaccount.com')
+
+    vaultMock.done()
+  })
+
+  t.test('cleanup', async () => {
+    client.close()
+    redis.disconnect()
+  })
+})
+
+tap.test('listServiceAccounts', async t => {
+  const client = createClient()
+  const redis = new Redis()
+
+  t.test('setup', async t => {
+  })
+
+  t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .put('/v1/secret/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
+      .reply(200)
+      .put('/v1/secret/data/credentials/google/my-sa2@my-project.iam.gserviceaccount.com')
+      .reply(200)
+      .intercept('/v1/secret/metadata/credentials/google/', 'LIST')
+      .reply(200, {
+        data: {
+          keys: [
+            'my-sa2@my-project.iam.gserviceaccount.com',
+            'my-sa1@my-project.iam.gserviceaccount.com'
+          ]
+        }
+      })
+
+    await client.addServiceAccount(SA_1)
+    await client.addServiceAccount(SA_2)
+
+    const keys = await client.listServiceAccounts()
+
+    t.same(keys, [
+      'my-sa1@my-project.iam.gserviceaccount.com',
+      'my-sa2@my-project.iam.gserviceaccount.com'
+    ])
+
+    vaultMock.done()
   })
 
   t.test('cleanup', async () => {
