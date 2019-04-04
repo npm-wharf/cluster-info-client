@@ -480,7 +480,6 @@ tap.test('removeServiceAccount', async t => {
   })
 })
 
-
 tap.test('listServiceAccounts', async t => {
   const client = createClient()
   const redis = new Redis()
