@@ -166,6 +166,13 @@ assert.eql(clusters, [
 ])
 ```
 
+### addServiceAccount(jsonServiceAccountKey)
+
+### getServiceAccount(serviceAccountAddress)
+
+### removeServiceAccount(serviceAccountAddress)
+
+### listServiceAccounts()
 
 ### close()
 
