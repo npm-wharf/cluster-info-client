@@ -168,11 +168,53 @@ assert.eql(clusters, [
 
 ### addServiceAccount(jsonServiceAccountKey)
 
+Store a Service Account private key.  Must be in JSON format.
+
+```js
+const key = {
+  'type': 'service_account',
+  'project_id': 'my-project',
+  'private_key_id': 'cccaedf234c3a4de25fce3adf245cfae352d4',
+  'private_key': '-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n',
+  'client_email': 'my-sa1@my-project.iam.gserviceaccount.com',
+  'client_id': '22349780582375098234759',
+  'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+  'token_uri': 'https://oauth2.googleapis.com/token',
+  'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
+  'client_x509_cert_url': 'https://www.googleapis.com/robot/v1/metadata/x509/my-sa1%40my-project.iam.gserviceaccount.com'
+}
+await addServiceAccount(key)
+```
+
 ### getServiceAccount(serviceAccountAddress)
+
+Fetch a Service Account private  key, given a `client_email`
+
+```js
+const key = await getServiceAccount('my-sa1@my-project.iam.gserviceaccount.com')
+```
 
 ### removeServiceAccount(serviceAccountAddress)
 
+Delete a Service Account private  key, given a `client_email`
+
+```js
+await removeServiceAccount('my-sa1@my-project.iam.gserviceaccount.com')
+```
+
 ### listServiceAccounts()
+
+List the addresses of all stored Service Account keys.
+
+```js
+const list = await listServiceAccounts()
+
+assert.eql(list, [
+    'my-sa1@my-project.iam.gserviceaccount.com',
+    'my-sa2@my-project.iam.gserviceaccount.com',
+    ...
+])
+```
 
 ### close()
 
