@@ -24,11 +24,13 @@
   },
   "homepage": "https://github.com/npm-wharf/cluster-info-client#readme",
   "devDependencies": {
+    "nock": "^10.0.6",
     "standard": "^12.0.1",
     "standard-version": "^5.0.2",
     "tap": "^12.6.0"
   },
   "dependencies": {
-    "ioredis": "^4.6.2"
+    "ioredis": "^4.6.2",
+    "node-vault": "^0.9.6"
   }
 }

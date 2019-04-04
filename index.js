@@ -1,14 +1,21 @@
 const Redis = require('ioredis')
+const createVault = require('node-vault')
 const CLUSTER_PREFIX = 'cluster:'
 const CHANNELS_PREFIX = 'channels:'
 const CHANNELS_KEY = 'channels'
 
 module.exports = function createClient (options = {}) {
   const {
-    redisUrl = 'redis://localhost:6379'
+    redisUrl = 'redis://localhost:6379',
+    vaultHost = 'http://localhost:8200',
+    vaultToken = process.env.VAULT_TOKEN
   } = options
 
   const redis = new Redis(redisUrl)
+  const vault = createVault({
+    endpoint: vaultHost,
+    token: vaultToken
+  })
 
   return {
     createChannel,
@@ -28,6 +35,9 @@ module.exports = function createClient (options = {}) {
   }
 
   async function registerCluster (name, props, secretProps = {}, channels = []) {
+    const {
+      environment = 'production'
+    } = props
     await _ensureChannelsExist(channels)
 
     let txn = _setClusterProps(redis.multi(), name, props)
@@ -39,10 +49,17 @@ module.exports = function createClient (options = {}) {
       })
     }
 
+    if (Object.keys(secretProps).length > 0) {
+      await _saveSecret(secretProps, name, environment)
+    }
+
     await txn.exec()
   }
 
   async function updateCluster (name, props, secretProps = {}) {
+    const {
+      environment = 'production'
+    } = props
     await _ensureClusterExists(name)
 
     const channels = await redis.hget(CLUSTER_PREFIX + name, CHANNELS_KEY)
@@ -53,13 +70,23 @@ module.exports = function createClient (options = {}) {
 
     txn = _setClusterProps(txn, name, props)
 
+    if (Object.keys(secretProps).length > 0) {
+      await _saveSecret(secretProps, name, environment)
+    } else {
+      await _deleteSecret(name, environment)
+    }
+
     await txn.exec()
   }
 
   async function unregisterCluster (name) {
     await _ensureClusterExists(name)
 
-    const channels = await redis.hget(CLUSTER_PREFIX + name, CHANNELS_KEY)
+    const props = await redis.hgetall(CLUSTER_PREFIX + name)
+    const {
+      [CHANNELS_KEY]: channels,
+      environment = 'production'
+    } = props
 
     let txn = redis.multi()
 
@@ -70,7 +97,10 @@ module.exports = function createClient (options = {}) {
 
     txn = txn.del(CLUSTER_PREFIX + name)
 
-    await txn.exec()
+    await Promise.all([
+      txn.exec(),
+      _deleteSecret(name, environment)
+    ])
   }
 
   async function listClusters () {
@@ -83,6 +113,10 @@ module.exports = function createClient (options = {}) {
     const props = await redis.hgetall(CLUSTER_PREFIX + name)
     if (props[CHANNELS_KEY]) props[CHANNELS_KEY] = props[CHANNELS_KEY].split(',')
     props.name = name
+    const {
+      environment = 'production'
+    } = props
+    props.secretProps = await _getSecret(name, environment)
     return props
   }
 
@@ -167,5 +201,29 @@ module.exports = function createClient (options = {}) {
     flags.forEach(([_, flag], idx) => {
       if (!flag) throw new Error(`channel '${channels[idx]}' must exist`)
     })
+  }
+
+  async function _saveSecret (props, name, environment) {
+    await vault.write(_secretPath(name, environment), { data: { value: JSON.stringify(props) } })
+  }
+
+  async function _getSecret (name, environment) {
+    try {
+      var resp = await vault.read(_secretPath(name, environment))
+    } catch (err) {
+      // istanbul ignore next
+      if (err.response && err.response.statusCode === 404) return
+      // istanbul ignore next
+      throw err
+    }
+    return JSON.parse(resp.data.data.value)
+  }
+
+  async function _deleteSecret (name, environment) {
+    await vault.delete(_secretPath(name, environment))
+  }
+
+  function _secretPath (name, environment) {
+    return `secret/data/clusters/${environment}/${name}`
   }
 }

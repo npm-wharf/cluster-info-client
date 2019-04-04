@@ -16,6 +16,8 @@ const createClusterInfoClient = require('@npm_wharf/cluster-info-client')
 
 const client = createClusterInfoClient({
     redisUrl: process.env.REDIS_URL || 'redis://localhost:6379'
+    vaultAddress: process.env.VAULT_ADDR || 'http://localhost:8200',
+    vaultToken: process.env.VAULT_TOKEN
 })
 
 const clusters = await client.listClusters()
@@ -26,7 +28,8 @@ const clusters = await client.listClusters()
 |name|description|default value|
 |---|---|---|
 |redisUrl|the url of the redis server holding basic cluster information|`'redis://localhost:6379'`|
-|(Vault configuration TBD) | | |
+|vaultAddress|the address, including protocol, to the vault server|`'http://localhost:8200'`|
+|vaultToken|a Vault authentication token with read/write access to cluster data| |
 
 ## Backends
 

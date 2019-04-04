@@ -1,6 +1,12 @@
 const tap = require('tap')
+const nock = require('nock')
 const Redis = require('ioredis')
-const createClient = require('../')
+const createInfoClient = require('../')
+
+const createClient = () => createInfoClient({
+  vaultHost: 'http://vault.dev:8200',
+  vaultToken: 's.asdfqweruiophjkl'
+})
 
 tap.test('check redis', async t => {
   const redis = new Redis({ maxRetriesPerRequest: 0 })
@@ -26,7 +32,11 @@ tap.test('empty redis', async t => {
 
 tap.test('create and close a client', async t => {
   const client = createClient()
+  client.close()
+})
 
+tap.test('create and close a client w/ defaults', async t => {
+  const client = createInfoClient()
   client.close()
 })
 
@@ -71,23 +81,45 @@ tap.test('registerCluster', async t => {
   })
 
   t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .put('/v1/secret/data/clusters/production/my-cluster', {
+        data: { value: '{"password":"hunter2"}' }
+      })
+      .reply(200)
     await client.registerCluster('my-cluster', { foo: 'bar' }, { password: 'hunter2' }, ['default'])
 
     const hash = await redis.hgetall('cluster:my-cluster')
     t.same(hash, { foo: 'bar', channels: 'default' })
     const channels = await redis.smembers('channels:default')
     t.same(channels, ['my-cluster'])
+    vaultMock.done()
   })
 
   t.test('works with default params', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
     await client.registerCluster('my-cluster2', { foo: 'bar' })
 
     const hash = await redis.hgetall('cluster:my-cluster2')
     t.same(hash, { foo: 'bar' })
+    vaultMock.done()
   })
 
   t.test('fails if channel doesnt exist', async t => {
     await t.rejects(client.registerCluster('lolfail', { foo: 'bar' }, {}, ['bogus']))
+  })
+
+  t.test('fails if vault has issues', async t => {
+    const badClient = createInfoClient({
+      vaultHost: 'http://vault.dev:8200', vaultToken: 's.bad'
+    })
+    const vaultMock = nock('http://vault.dev:8200')
+      .put('/v1/secret/data/clusters/production/lolfail2', {
+        data: { value: '{"password":"hunter2"}' }
+      })
+      .reply(500)
+    await t.rejects(badClient.registerCluster('lolfail2', { foo: 'bar' }, { password: 'hunter2' }))
+    badClient.close()
+    vaultMock.done()
   })
 
   t.test('cleanup', async () => {
@@ -101,10 +133,29 @@ tap.test('updateCluster', async t => {
   const redis = new Redis()
 
   t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .put('/v1/secret/data/clusters/production/my-cluster', {
+        data: { value: '{"password":"letmein"}' }
+      })
+      .reply({})
+
+    await client.updateCluster('my-cluster', { baz: 1 }, { password: 'letmein' })
+
+    const hash = await redis.hgetall('cluster:my-cluster')
+    t.same(hash, { baz: 1, channels: 'default' })
+    vaultMock.done()
+  })
+
+  t.test('works with defaults', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .delete('/v1/secret/data/clusters/production/my-cluster')
+      .reply(200)
+
     await client.updateCluster('my-cluster', { baz: 1 })
 
     const hash = await redis.hgetall('cluster:my-cluster')
     t.same(hash, { baz: 1, channels: 'default' })
+    vaultMock.done()
   })
 
   t.test('fails if cluster does not exist', async t => {
@@ -126,10 +177,15 @@ tap.test('unregisterCluster', async t => {
   })
 
   t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .delete('/v1/secret/data/clusters/production/todelete')
+      .reply({})
+
     await client.unregisterCluster('todelete')
 
     t.equal(await redis.exists('cluster:todelete'), 0)
     t.equal(await redis.sismember('channels:default', 'todelete'), 0)
+    vaultMock.done()
   })
 
   t.test('fails if cluster does not exist', async t => {
@@ -170,18 +226,27 @@ tap.test('getCluster', async t => {
   })
 
   t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/secret/data/clusters/production/my-cluster')
+      .reply(200, { data: { data: { value: '{"password":"letmein"}' } } })
+      .get('/v1/secret/data/clusters/production/my-cluster2')
+      .reply(404)
+
     const cluster = await client.getCluster('my-cluster')
     t.same(cluster, {
       name: 'my-cluster',
       channels: ['default'],
-      baz: 1
+      baz: 1,
+      secretProps: { password: 'letmein' }
     })
 
     const cluster2 = await client.getCluster('my-cluster2')
     t.same(cluster2, {
       name: 'my-cluster2',
-      foo: 'bar'
+      foo: 'bar',
+      secretProps: null
     })
+    vaultMock.done()
   })
 
   t.test('fails if cluster does not exist', async t => {
@@ -202,19 +267,27 @@ tap.test('addClusterToChannel', async t => {
   })
 
   t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/secret/data/clusters/production/my-cluster3')
+      .reply(200, { data: { data: { value: '{"password":"letmein"}' } } })
     await client.addClusterToChannel('my-cluster3', 'production')
 
     const cluster = await client.getCluster('my-cluster3')
     t.same(cluster.channels, ['default', 'production'])
     t.same((await redis.smembers('channels:production')).sort(), ['my-cluster3'])
+    vaultMock.done()
   })
 
   t.test('works with no channels', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/secret/data/clusters/production/my-cluster2')
+      .reply(404)
     await client.addClusterToChannel('my-cluster2', 'production')
 
     const cluster = await client.getCluster('my-cluster2')
     t.same(cluster.channels, ['production'])
     t.same((await redis.smembers('channels:production')).sort(), ['my-cluster2', 'my-cluster3'])
+    vaultMock.done()
   })
 
   t.test('fails if cluster does not exist', async t => {
@@ -239,27 +312,39 @@ tap.test('removeClusterFromChannel', async t => {
   })
 
   t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/secret/data/clusters/production/my-cluster3')
+      .reply(404)
     await client.removeClusterFromChannel('my-cluster3', 'production')
 
     const cluster = await client.getCluster('my-cluster3')
     t.same(cluster.channels, ['default'])
     t.same((await redis.smembers('channels:production')).sort(), ['my-cluster2'])
+    vaultMock.done()
   })
 
-  t.test('works with one channels', async t => {
+  t.test('works with one channel', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/secret/data/clusters/production/my-cluster2')
+      .reply(404)
     await client.removeClusterFromChannel('my-cluster2', 'production')
 
     const cluster = await client.getCluster('my-cluster2')
     t.same(cluster.channels, undefined)
     t.same((await redis.smembers('channels:production')).sort(), [])
+    vaultMock.done()
   })
 
   t.test('works with no channel', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/secret/data/clusters/production/my-cluster2')
+      .reply(404)
     await client.removeClusterFromChannel('my-cluster2', 'production')
 
     const cluster = await client.getCluster('my-cluster2')
     t.same(cluster.channels, undefined)
     t.same((await redis.smembers('channels:production')).sort(), [])
+    vaultMock.done()
   })
 
   t.test('fails if cluster does not exist', async t => {
