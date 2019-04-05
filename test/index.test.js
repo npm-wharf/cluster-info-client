@@ -111,7 +111,7 @@ tap.test('registerCluster', async t => {
     await t.rejects(client.registerCluster('lolfail', { foo: 'bar' }, {}, ['bogus']))
   })
 
-  /* t.test('fails if vault has issues', async t => {
+  t.test('fails if vault has issues', async t => {
     const badClient = createInfoClient({
       vaultHost: 'http://vault.dev:8200', vaultToken: 's.bad'
     })
@@ -123,7 +123,7 @@ tap.test('registerCluster', async t => {
     await t.rejects(badClient.registerCluster('lolfail2', { foo: 'bar' }, { password: 'hunter2' }))
     badClient.close()
     vaultMock.done()
-  }) */
+  })
 
   t.test('cleanup', async () => {
     client.close()
