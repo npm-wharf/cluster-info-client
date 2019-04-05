@@ -9,7 +9,8 @@ module.exports = function createClient (options = {}) {
   const {
     redisUrl = 'redis://localhost:6379',
     vaultHost = 'http://localhost:8200',
-    vaultToken = process.env.VAULT_TOKEN
+    vaultToken = process.env.VAULT_TOKEN,
+    vaultPrefix = 'kv/'
   } = options
 
   const redis = new Redis(redisUrl)
@@ -196,7 +197,7 @@ module.exports = function createClient (options = {}) {
   }
 
   async function listServiceAccounts () {
-    const resp = await vault.list(`secret/metadata/${SA_PATH}`)
+    const resp = await vault.list(`${vaultPrefix}metadata/${SA_PATH}`)
     return resp.data.keys.sort()
   }
 
@@ -253,10 +254,10 @@ module.exports = function createClient (options = {}) {
   }
 
   function _secretPath (name, environment) {
-    return `secret/data/clusters/${environment}/${name}`
+    return `${vaultPrefix}data/clusters/${environment}/${name}`
   }
 
   function _secretSAPath (addr) {
-    return `secret/data/${SA_PATH}${addr}`
+    return `${vaultPrefix}data/${SA_PATH}${addr}`
   }
 }
