@@ -49,7 +49,7 @@ Vault will have:
 - a map of Google service account keys at `/credentials/google/${serviceAccountEmail}`
 - a map of AWS IAM keys at `/credentials/amazon/${accountName}`
 - common provider specific data shared amongst clusters at `/clusters/common/${provider}`
-- a map of clusters `/clusters/${channelName}/${clusterName}` containing all sensitive information specific to a single cluster
+- a map of clusters `/clusters/${environment}/${clusterName}` containing all sensitive information specific to a single cluster
 
 ## API
 
