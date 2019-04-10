@@ -4,8 +4,9 @@ const Redis = require('ioredis')
 const createInfoClient = require('../')
 
 const createClient = () => createInfoClient({
-  vaultHost: 'http://vault.dev:8200',
-  vaultToken: 's.deadb33f'
+  vaultHost: process.env.VAULT_HOST || 'http://vault.dev:8200',
+  vaultToken: process.env.VAULT_TOKEN || 's.deadb33f',
+  vaultPrefix: process.env.VAULT_PREFIX || 'kv/'
 })
 
 tap.test('check redis', async t => {
@@ -75,9 +76,6 @@ tap.test('channels', async t => {
 tap.test('registerCluster', async t => {
   const client = createClient()
   const redis = new Redis()
-  const badClient = createInfoClient({
-    vaultHost: 'http://vault.dev:8200', vaultToken: 's.bad'
-  })
 
   t.test('setup', async t => {
     await client.createChannel('default')
@@ -111,7 +109,7 @@ tap.test('registerCluster', async t => {
     await t.rejects(client.registerCluster('lolfail', { foo: 'bar' }, {}, ['bogus']))
   })
 
-  t.test('fails if vault has issues', async t => {
+  process.env.NOCK_OFF || t.test('fails if vault has issues', async t => {
     const badClient = createInfoClient({
       vaultHost: 'http://vault.dev:8200', vaultToken: 's.bad'
     })
@@ -127,7 +125,6 @@ tap.test('registerCluster', async t => {
 
   t.test('cleanup', async () => {
     client.close()
-    badClient.close()
     redis.disconnect()
   })
 })
