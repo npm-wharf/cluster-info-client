@@ -38,6 +38,8 @@ module.exports = function createClient (options = {}) {
     removeServiceAccount,
     listServiceAccounts,
 
+    getCommon,
+
     close
   }
 
@@ -199,6 +201,10 @@ module.exports = function createClient (options = {}) {
   async function listServiceAccounts () {
     const resp = await vault.list(`${vaultPrefix}metadata/${SA_PATH}`)
     return resp.data.keys.sort()
+  }
+
+  async function getCommon (provider = 'GKE') {
+    return _readVault(`${vaultPrefix}data/clusters/common/${provider.toLowerCase()}`)
   }
 
   function close () {

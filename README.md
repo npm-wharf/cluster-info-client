@@ -222,6 +222,24 @@ assert.eql(list, [
 ])
 ```
 
+### getCommon(provider)
+
+Get common defaults/values for all clusters for a given provider.  (Default: `'GKE'`)
+
+```js
+const data = await getCommon(provider)
+
+assert.eql(data, {
+  authAccount: 'resource-manager@iam.googleapis.com',
+  billingAccount: 123412341234,
+  organizationId: 678967896789,
+  clusterDefaults: {
+    //...
+  }
+  //...
+})
+```
+
 ### close()
 
 Closes the client and any associated connections to backends.
