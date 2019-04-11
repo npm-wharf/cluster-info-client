@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+# [1.4.0](https://github.com/npm-wharf/cluster-info-client/compare/v1.3.0...v1.4.0) (2019-04-11)
+
+
+### Features
+
+* add getCommon method for defaults among providers ([#7](https://github.com/npm-wharf/cluster-info-client/issues/7)) ([604567b](https://github.com/npm-wharf/cluster-info-client/commit/604567b))
+
+
+
 # [1.3.0](https://github.com/npm-wharf/cluster-info-client/compare/v1.2.0...v1.3.0) (2019-04-06)
 
 
