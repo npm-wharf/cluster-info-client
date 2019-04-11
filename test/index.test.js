@@ -519,6 +519,35 @@ tap.test('listServiceAccounts', async t => {
   })
 })
 
+tap.test('getCommon', async t => {
+  const client = createClient()
+  const commonData = { cluster: { default: true } }
+  t.test('setup', async t => {
+  })
+
+  t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/common/gke')
+      .reply(200, {
+        data: {
+          data: {
+            value: JSON.stringify(commonData)
+          }
+        }
+      })
+
+    const result = await client.getCommon()
+
+    t.same(result, commonData)
+
+    vaultMock.done()
+  })
+
+  t.test('cleanup', async () => {
+    client.close()
+  })
+})
+
 tap.test('prevent client re-use after close', async t => {
   const client = createClient()
   client.close()
