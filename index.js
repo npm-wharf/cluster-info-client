@@ -187,7 +187,7 @@ module.exports = function createClient (options = {}) {
   async function addServiceAccount (jsonServiceAccountKey) {
     const addr = jsonServiceAccountKey['client_email']
     if (!addr) throw new Error('service account key must have a `client_email` property')
-    await vault.write(_secretSAPath(addr), { data: { value: JSON.stringify(jsonServiceAccountKey) } })
+    await vault.write(_secretSAPath(addr), { data: { value: JSON.stringify(jsonServiceAccountKey, null, 2) } })
   }
 
   async function getServiceAccount (serviceAccountAddress) {
@@ -236,7 +236,7 @@ module.exports = function createClient (options = {}) {
   }
 
   async function _saveSecret (props, name, environment) {
-    await vault.write(_secretPath(name, environment), { data: { value: JSON.stringify(props) } })
+    await vault.write(_secretPath(name, environment), { data: { value: JSON.stringify(props, null, 2) } })
   }
 
   async function _getSecret (name, environment) {

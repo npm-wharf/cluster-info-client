@@ -84,7 +84,7 @@ tap.test('registerCluster', async t => {
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
       .put('/v1/kv/data/clusters/production/my-cluster', {
-        data: { value: '{"password":"hunter2"}' }
+        data: { value: JSON.stringify({ password: 'hunter2' }, null, 2) }
       })
       .reply(200)
     await client.registerCluster('my-cluster', { foo: 'bar' }, { password: 'hunter2' }, ['default'])
@@ -115,7 +115,7 @@ tap.test('registerCluster', async t => {
     })
     const vaultMock = nock('http://vault.dev:8200')
       .put('/v1/kv/data/clusters/production/lolfail2', {
-        data: { value: '{"password":"hunter2"}' }
+        data: { value: JSON.stringify({ password: 'hunter2' }, null, 2) }
       })
       .reply(500)
     await t.rejects(badClient.registerCluster('lolfail2', { foo: 'bar' }, { password: 'hunter2' }))
@@ -136,7 +136,7 @@ tap.test('updateCluster', async t => {
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
       .put('/v1/kv/data/clusters/production/my-cluster', {
-        data: { value: '{"password":"letmein"}' }
+        data: { value: JSON.stringify({ password: 'letmein' }, null, 2) }
       })
       .reply({})
 
@@ -435,7 +435,7 @@ tap.test('getServiceAccount', async t => {
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
       .get('/v1/kv/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
-      .reply(200, { data: { data: { value: JSON.stringify(SA_1) } } })
+      .reply(200, { data: { data: { value: JSON.stringify(SA_1, null, 2) } } })
 
     const result = await client.getServiceAccount('my-sa1@my-project.iam.gserviceaccount.com')
 
@@ -531,7 +531,7 @@ tap.test('getCommon', async t => {
       .reply(200, {
         data: {
           data: {
-            value: JSON.stringify(commonData)
+            value: JSON.stringify(commonData, null, 2)
           }
         }
       })
