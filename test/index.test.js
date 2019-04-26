@@ -83,6 +83,8 @@ tap.test('registerCluster', async t => {
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/production/my-cluster')
+      .reply(404)
       .put('/v1/kv/data/clusters/production/my-cluster', {
         data: { value: JSON.stringify({ password: 'hunter2' }, null, 2) }
       })
@@ -114,6 +116,8 @@ tap.test('registerCluster', async t => {
       vaultHost: 'http://vault.dev:8200', vaultToken: 's.bad'
     })
     const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/production/lolfail2')
+      .reply(404)
       .put('/v1/kv/data/clusters/production/lolfail2', {
         data: { value: JSON.stringify({ password: 'hunter2' }, null, 2) }
       })
@@ -135,6 +139,8 @@ tap.test('updateCluster', async t => {
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/production/my-cluster')
+      .reply(404)
       .put('/v1/kv/data/clusters/production/my-cluster', {
         data: { value: JSON.stringify({ password: 'letmein' }, null, 2) }
       })
@@ -153,6 +159,18 @@ tap.test('updateCluster', async t => {
       .reply(200)
 
     await client.updateCluster('my-cluster', { baz: 1 })
+
+    const hash = await redis.hgetall('cluster:my-cluster')
+    t.same(hash, { baz: 1, channels: 'default' })
+    vaultMock.done()
+  })
+
+  t.test('noop if data is the same', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/production/my-cluster')
+      .reply(200, { data: { data: { value: JSON.stringify({ password: 'letmein' }) } } })
+
+    await client.updateCluster('my-cluster', { baz: 1 }, { password: 'letmein' })
 
     const hash = await redis.hgetall('cluster:my-cluster')
     t.same(hash, { baz: 1, channels: 'default' })

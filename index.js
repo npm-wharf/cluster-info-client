@@ -236,6 +236,8 @@ module.exports = function createClient (options = {}) {
   }
 
   async function _saveSecret (props, name, environment) {
+    const previous = await _readVault(_secretPath(name, environment))
+    if (JSON.stringify(previous) === JSON.stringify(props)) return
     await vault.write(_secretPath(name, environment), { data: { value: JSON.stringify(props, null, 2) } })
   }
 
