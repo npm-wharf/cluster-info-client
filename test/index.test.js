@@ -380,6 +380,27 @@ tap.test('removeClusterFromChannel', async t => {
   })
 })
 
+tap.test('listClustersByChannel', async t => {
+  const client = createClient()
+  const redis = new Redis()
+
+  t.test('setup', async t => {
+    await client.addClusterToChannel('my-cluster', 'production')
+    await client.addClusterToChannel('my-cluster2', 'production')
+  })
+
+  t.test('works', async t => {
+    const results = await client.listClustersByChannel('production')
+
+    t.same(results, ['my-cluster', 'my-cluster2'])
+  })
+
+  t.test('cleanup', async () => {
+    client.close()
+    redis.disconnect()
+  })
+})
+
 const SA_1 = {
   'type': 'service_account',
   'project_id': 'my-project',

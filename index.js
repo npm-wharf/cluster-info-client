@@ -32,6 +32,7 @@ module.exports = function createClient (options = {}) {
 
     addClusterToChannel,
     removeClusterFromChannel,
+    listClustersByChannel,
 
     addServiceAccount,
     getServiceAccount,
@@ -182,6 +183,11 @@ module.exports = function createClient (options = {}) {
       txn = txn.hset(CLUSTER_PREFIX + name, CHANNELS_KEY, channels.join(','))
     }
     await txn.exec()
+  }
+
+  async function listClustersByChannel (channel) {
+    const list = await redis.smembers(CHANNELS_PREFIX + channel)
+    return list.sort()
   }
 
   async function addServiceAccount (jsonServiceAccountKey) {
