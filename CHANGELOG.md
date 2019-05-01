@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+# [1.5.0](https://github.com/npm-wharf/cluster-info-client/compare/v1.4.2...v1.5.0) (2019-05-01)
+
+
+### Features
+
+* add listClustersByChannel ([d963404](https://github.com/npm-wharf/cluster-info-client/commit/d963404))
+
+
+
 ## [1.4.2](https://github.com/npm-wharf/cluster-info-client/compare/v1.4.1...v1.4.2) (2019-04-26)
 
 
