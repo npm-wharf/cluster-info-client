@@ -587,6 +587,28 @@ tap.test('getCommon', async t => {
   })
 })
 
+tap.test('create client with AppRole', async t => {
+  const vaultMock = nock('http://vault.dev:8200')
+    .post('/v1/auth/approle/login', {
+      role_id: '1234-1234-1243',
+      secret_id: 'abcd-abcd-abcd'
+    })
+    .reply(200, {
+      auth: { client_token: 's.somet0k3n' }
+    })
+    .get('/v1/kv/data/clusters/production/my-cluster')
+    .reply(200, { data: { data: { value: '{"password":"letmein"}' } } })
+
+  const client = createInfoClient({
+    vaultHost: process.env.VAULT_HOST || 'http://vault.dev:8200',
+    vaultRoleId: '1234-1234-1243',
+    vaultSecretId: 'abcd-abcd-abcd'
+  })
+  await client.getCluster('my-cluster')
+  client.close()
+  vaultMock.done()
+})
+
 tap.test('prevent client re-use after close', async t => {
   const client = createClient()
   client.close()

@@ -10,14 +10,33 @@ module.exports = function createClient (options = {}) {
     redisUrl = 'redis://localhost:6379',
     vaultHost = 'http://localhost:8200',
     vaultToken = process.env.VAULT_TOKEN,
+    vaultRoleId = process.env.VAULT_ROLE_ID,
+    vaultSecretId = process.env.VAULT_SECRET_ID,
     vaultPrefix = 'kv/'
   } = options
 
   const redis = new Redis(redisUrl)
-  const vault = createVault({
+  let vault = createVault({
     endpoint: vaultHost,
     token: vaultToken
   })
+
+  let vaultAuth
+
+  if (vaultToken) {
+    vaultAuth = Promise.resolve()
+  } else if (vaultRoleId && vaultSecretId) {
+    vaultAuth = vault.approleLogin({
+      role_id: vaultRoleId,
+      secret_id: vaultSecretId
+    }).then(result => {
+      const { auth } = result
+      vault = createVault({
+        endpoint: vaultHost,
+        token: auth.client_token
+      })
+    })
+  }
 
   return {
     createChannel,
@@ -193,6 +212,7 @@ module.exports = function createClient (options = {}) {
   async function addServiceAccount (jsonServiceAccountKey) {
     const addr = jsonServiceAccountKey['client_email']
     if (!addr) throw new Error('service account key must have a `client_email` property')
+    await vaultAuth
     await vault.write(_secretSAPath(addr), { data: { value: JSON.stringify(jsonServiceAccountKey, null, 2) } })
   }
 
@@ -201,10 +221,12 @@ module.exports = function createClient (options = {}) {
   }
 
   async function removeServiceAccount (serviceAccountAddress) {
+    await vaultAuth
     await vault.delete(_secretSAPath(serviceAccountAddress))
   }
 
   async function listServiceAccounts () {
+    await vaultAuth
     const resp = await vault.list(`${vaultPrefix}metadata/${SA_PATH}`)
     return resp.data.keys.sort()
   }
@@ -244,6 +266,7 @@ module.exports = function createClient (options = {}) {
   async function _saveSecret (props, name, environment) {
     const previous = await _readVault(_secretPath(name, environment))
     if (JSON.stringify(previous) === JSON.stringify(props)) return
+    await vaultAuth
     await vault.write(_secretPath(name, environment), { data: { value: JSON.stringify(props, null, 2) } })
   }
 
@@ -253,6 +276,7 @@ module.exports = function createClient (options = {}) {
 
   async function _readVault (path) {
     try {
+      await vaultAuth
       var resp = await vault.read(path)
     } catch (err) {
       // istanbul ignore next
@@ -264,6 +288,7 @@ module.exports = function createClient (options = {}) {
   }
 
   async function _deleteSecret (name, environment) {
+    await vaultAuth
     await vault.delete(_secretPath(name, environment))
   }
 
