@@ -12,7 +12,7 @@ module.exports = function createClient (options = {}) {
     vaultToken = process.env.VAULT_TOKEN,
     vaultRoleId = process.env.VAULT_ROLE_ID,
     vaultSecretId = process.env.VAULT_SECRET_ID,
-    vaultPrefix = 'kv/'
+    vaultPrefix = process.env.VAULT_SECRET_PREFIX || 'kv/'
   } = options
 
   const redis = new Redis(redisUrl)

@@ -29,7 +29,9 @@ const clusters = await client.listClusters()
 |---|---|---|
 |redisUrl|the url of the redis server holding basic cluster information|`'redis://localhost:6379'`|
 |vaultAddress|the address, including protocol, to the vault server|`'http://localhost:8200'`|
-|vaultToken|a Vault authentication token with read/write access to cluster data| |
+|vaultRoleId|a Vault AppRole Role ID with read/write access to cluster data| |
+|vaultSecretId|a Vault AppRole Secret ID with read/write access to cluster data| |
+|vaultToken|if not using AppRole, a Vault token can be used directly| |
 |vaultPrefix|prefix to the Vault data path|`'kv/'`|
 
 ## Backends
