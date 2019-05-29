@@ -242,6 +242,22 @@ assert.eql(data, {
 })
 ```
 
+### issueCertificate(role, domain, ttl = 5 * 60)
+
+Issue a child certificate using Vault's PKI engine.
+
+```js
+const resp = await issueCertificate('support-hub', 'my-cluster.npme.io')
+
+assert.eql(resp, {
+  certificate: '---- {PEM string}...',
+  expiration: 1559166104,
+  issuing_ca: '---- {PEM string}...',
+  private_key: '---- {key string}...',
+  private_key_type: 'rsa',
+  serial_number: '52:be:c0:65:33:fa:6e:aa:02:60:10:be:c5:f7:f6:f4:a1:2c:3c:dc'
+})
+```
 ### close()
 
 Closes the client and any associated connections to backends.

@@ -4,7 +4,7 @@ const Redis = require('ioredis')
 const createInfoClient = require('../')
 
 const createClient = () => createInfoClient({
-  vaultHost: process.env.VAULT_HOST || 'http://vault.dev:8200',
+  vaultHost: process.env.VAULT_ADDR || 'http://vault.dev:8200',
   vaultToken: process.env.VAULT_TOKEN || 's.deadb33f',
   vaultPrefix: process.env.VAULT_PREFIX || 'kv/'
 })
@@ -613,4 +613,52 @@ tap.test('prevent client re-use after close', async t => {
   const client = createClient()
   client.close()
   t.rejects(async () => client.listClusters())
+})
+
+tap.test('issueCertificate', async t => {
+  const client = createClient()
+  t.test('setup', async t => {
+  })
+
+  t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .put('/v1/pki/issue/support-hub', { common_name: 'yolo.npme.io', ttl: 9000 })
+      .reply(200, {
+        data: {
+          certificate: '-----BEGIN CERTIFICATE-----weknowwearebasicallytestingamock',
+          expiration: Date.now() + 9000,
+          issuing_ca: '-----BEGIN CERTIFICATE-----theresprobablybetterwaystotestthis',
+          private_key: '"-----BEGIN RSA PRIVATE KEY-----thiswilldofornow',
+          private_key_type: 'rsa',
+          serial_number: 'ab:cd:ef:gh:ij:00:kl:mn:op:qr:st:03:uv:wx:yz'
+        }
+      })
+
+    await client.issueCertificate('support-hub', 'yolo.npme.io', 9000)
+
+    vaultMock.done()
+  })
+
+  t.test('ttl has default value of 300 when none is provided', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .put('/v1/pki/issue/support-hub', { common_name: 'yolo.npme.io', ttl: 300 })
+      .reply(200, {
+        data: {
+          certificate: '-----BEGIN CERTIFICATE-----weknowwearebasicallytestingamock',
+          expiration: Date.now() + 300,
+          issuing_ca: '-----BEGIN CERTIFICATE-----theresprobablybetterwaystotestthis',
+          private_key: '"-----BEGIN RSA PRIVATE KEY-----thiswilldofornow',
+          private_key_type: 'rsa',
+          serial_number: 'ab:cd:ef:gh:ij:00:kl:mn:op:qr:st:03:uv:wx:yz'
+        }
+      })
+
+    await client.issueCertificate('support-hub', 'yolo.npme.io')
+
+    vaultMock.done()
+  })
+
+  t.test('cleanup', async () => {
+    client.close()
+  })
 })
