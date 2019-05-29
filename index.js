@@ -60,6 +60,8 @@ module.exports = function createClient (options = {}) {
 
     getCommon,
 
+    issueCertificate,
+
     close
   }
 
@@ -233,6 +235,11 @@ module.exports = function createClient (options = {}) {
 
   async function getCommon (provider = 'GKE') {
     return _readVault(`${vaultPrefix}data/clusters/common/${provider.toLowerCase()}`)
+  }
+
+  async function issueCertificate (role, domain, ttl = 5 * 60) {
+    const resp = await vault.write(`pki/issue/${role}`, { common_name: domain, ttl: ttl })
+    return resp.data
   }
 
   function close () {
