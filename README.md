@@ -242,6 +242,21 @@ assert.eql(data, {
 })
 ```
 
+### issueCertificate(domain, ttl = 5 * 60)
+
+Issue a child certificate using Vault's PKI engine.
+
+```js
+const resp = await issueCertificate('my-cluster.npme.io')
+
+assert.eql(resp, {
+  certificate: '---- {PEM string}...',
+  issuing_ca: '---- {PEM string}...',
+  ca_chain: '---- {PEM string}...',
+  private_key: '---- {PEM string}...'
+})
+```
+
 ### close()
 
 Closes the client and any associated connections to backends.
