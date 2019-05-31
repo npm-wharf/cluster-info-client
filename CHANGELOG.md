@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+# [1.7.0](https://github.com/npm-wharf/cluster-info-client/compare/v1.6.0...v1.7.0) (2019-05-31)
+
+
+### Features
+
+* add issueCertificate ([55ff8ab](https://github.com/npm-wharf/cluster-info-client/commit/55ff8ab))
+
+
+
 # [1.6.0](https://github.com/npm-wharf/cluster-info-client/compare/v1.5.0...v1.6.0) (2019-05-04)
 
 
