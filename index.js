@@ -238,6 +238,7 @@ module.exports = function createClient (options = {}) {
   }
 
   async function issueCertificate (role, domain, ttl = 5 * 60) {
+    await vaultAuth
     const resp = await vault.write(`pki/issue/${role}`, { common_name: domain, ttl: ttl })
     return resp.data
   }
