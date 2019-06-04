@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.7.1](https://github.com/npm-wharf/cluster-info-client/compare/v1.7.0...v1.7.1) (2019-06-04)
+
+
+### Bug Fixes
+
+* **docs:** parameter name ([84b1cf2](https://github.com/npm-wharf/cluster-info-client/commit/84b1cf2))
+* await approle before issueing cert ([ac64d9b](https://github.com/npm-wharf/cluster-info-client/commit/ac64d9b))
+
+
+
 # [1.7.0](https://github.com/npm-wharf/cluster-info-client/compare/v1.6.0...v1.7.0) (2019-05-31)
 
 
