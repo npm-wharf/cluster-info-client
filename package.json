@@ -30,6 +30,7 @@
     "tap": "^12.6.0"
   },
   "dependencies": {
+    "fast-deep-equal": "^2.0.1",
     "ioredis": "^4.6.2",
     "node-vault": "^0.9.6"
   }

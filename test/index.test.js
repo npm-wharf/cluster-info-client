@@ -82,13 +82,18 @@ tap.test('registerCluster', async t => {
   })
 
   t.test('works', async t => {
-    const vaultMock = nock('http://vault.dev:8200')
+    const vaultMock = nock('http://vault.dev:8200/', {
+      reqheaders: {
+        'x-vault-token': 's.deadb33f'
+      }
+    })
       .get('/v1/kv/data/clusters/production/my-cluster')
       .reply(404)
       .put('/v1/kv/data/clusters/production/my-cluster', {
         data: { value: JSON.stringify({ password: 'hunter2' }, null, 2) }
       })
       .reply(200)
+
     await client.registerCluster('my-cluster', { foo: 'bar' }, { password: 'hunter2' }, ['default'])
 
     const hash = await redis.hgetall('cluster:my-cluster')
@@ -446,6 +451,8 @@ tap.test('addServiceAccount', async t => {
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
+      .reply(404)
       .put('/v1/kv/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
       .reply(200)
 
@@ -454,8 +461,17 @@ tap.test('addServiceAccount', async t => {
     vaultMock.done()
   })
 
-  t.test('failts if missing client_email', async t => {
+  t.test('fails if missing client_email', async t => {
     t.rejects(() => client.addServiceAccount(BAD_SA))
+  })
+
+  t.test('should be idempotent', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
+      .reply(200, { data: { data: { value: JSON.stringify(SA_1, null, 2) } } })
+
+    await client.addServiceAccount(SA_1)
+    vaultMock.done()
   })
 
   t.test('cleanup', async () => {
@@ -498,6 +514,8 @@ tap.test('removeServiceAccount', async t => {
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/credentials/google/my-sa2@my-project.iam.gserviceaccount.com')
+      .reply(404)
       .put('/v1/kv/data/credentials/google/my-sa2@my-project.iam.gserviceaccount.com')
       .reply(200)
       .delete('/v1/kv/data/credentials/google/my-sa2@my-project.iam.gserviceaccount.com')
@@ -525,8 +543,12 @@ tap.test('listServiceAccounts', async t => {
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
+      .reply(404)
       .put('/v1/kv/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
       .reply(200)
+      .get('/v1/kv/data/credentials/google/my-sa2@my-project.iam.gserviceaccount.com')
+      .reply(404)
       .put('/v1/kv/data/credentials/google/my-sa2@my-project.iam.gserviceaccount.com')
       .reply(200)
       .intercept('/v1/kv/metadata/credentials/google/', 'LIST')

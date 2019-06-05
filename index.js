@@ -1,5 +1,6 @@
 const Redis = require('ioredis')
 const createVault = require('node-vault')
+const equal = require('fast-deep-equal')
 const CLUSTER_PREFIX = 'cluster:'
 const CHANNELS_PREFIX = 'channels:'
 const CHANNELS_KEY = 'channels'
@@ -215,6 +216,10 @@ module.exports = function createClient (options = {}) {
     const addr = jsonServiceAccountKey['client_email']
     if (!addr) throw new Error('service account key must have a `client_email` property')
     await vaultAuth
+    const exisiting = await getServiceAccount(addr)
+
+    if (equal(exisiting, jsonServiceAccountKey)) return
+
     await vault.write(_secretSAPath(addr), { data: { value: JSON.stringify(jsonServiceAccountKey, null, 2) } })
   }
 
@@ -273,7 +278,7 @@ module.exports = function createClient (options = {}) {
 
   async function _saveSecret (props, name, environment) {
     const previous = await _readVault(_secretPath(name, environment))
-    if (JSON.stringify(previous) === JSON.stringify(props)) return
+    if (equal(previous, props)) return
     await vaultAuth
     await vault.write(_secretPath(name, environment), { data: { value: JSON.stringify(props, null, 2) } })
   }
