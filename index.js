@@ -1,5 +1,6 @@
 const Redis = require('ioredis')
 const createVault = require('node-vault')
+const rpn = require('request-promise-native')
 const equal = require('fast-deep-equal')
 const CLUSTER_PREFIX = 'cluster:'
 const CHANNELS_PREFIX = 'channels:'
@@ -19,7 +20,9 @@ module.exports = function createClient (options = {}) {
   const redis = new Redis(redisUrl)
   let vault = createVault({
     endpoint: vaultHost,
-    token: vaultToken
+    token: vaultToken,
+    // workaround for https://github.com/kr1sp1n/node-vault/issues/80
+    'request-promise': rpn
   })
 
   let vaultAuth
@@ -34,7 +37,8 @@ module.exports = function createClient (options = {}) {
       const { auth } = result
       vault = createVault({
         endpoint: vaultHost,
-        token: auth.client_token
+        token: auth.client_token,
+        'request-promise': rpn
       })
     })
   }
