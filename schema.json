@@ -1,0 +1,143 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://npm-js.net/cluster-info",
+  "title": "Cluster Info",
+  "type": "object",
+  "required": ["cluster", "common", "tokens", "spec"],
+  "properties": {
+    "common": { "$ref": "#/definitions/common" },
+    "cluster": {
+      "description": "properties used for cluster provisioning",
+      "allOf": [
+        { "$ref": "#/definitions/common" },
+        {
+          "type": "object",
+          "properties": {
+            "clusterName": {
+              "description": "the name of the cluster in GKE.  Oftentimes the same as the `slug`, but sometimes post-fixed with a number",
+              "type": "string"
+            },
+            "credentials": {
+              "description": "the project-level service account email used to perform various operations in GCS",
+              "type": "string",
+              "format": "email"
+            },
+            "zones": {
+              "description": "the list of GCS zones where the cluster's nodes will be located",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "masterEndpoint": {
+              "description": "the IP address of the main Kubernetes endpoint",
+              "type": "string",
+              "format": "ipv4"
+            }
+          }
+        }
+      ]
+    },
+    "tokens": {
+      "description": "properties used to tokenize the McGonagall specification",
+      "allOf": [
+        { "$ref": "#/definitions/common" },
+        {
+          "type": "object",
+          "properties": {
+            "masterIP": {
+              "description": "the IP address of the main Kubernetes endpoint",
+              "type": "string",
+              "format": "ipv4"
+            },
+            "awsZone": {
+              "description": "[DEPRECATED], the same as `domain`",
+              "type": "string"
+            },
+            "dashboardAdmin": {
+              "description": "the username for the dashboards internal to the cluster",
+              "type": "string"
+            },
+            "dashboardPass": {
+              "description": "the password for the dashboards internal to the cluster",
+              "type": "string"
+            },
+            "awsAccount": {
+              "description": "the AWS access key ID for use with AWS operaions",
+              "type": "string"
+            },
+            "awsSecret": {
+              "description": "the AWS secret access key for use with AWS operaions",
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "serviceAccounts": {
+      "description": "`key: email` pairs that will be used to replace values throughout the document",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "format": "email"
+      }
+    },
+    "environment": { "$ref": "#/definitions/environment" },
+    "channels": {
+      "description": "channels that this cluster is a member of.  e.g. environments, deployment groups",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "definitions": {
+    "environment": {
+      "description": "the broad environment where this cluster lives",
+      "enum": [ "development", "staging", "production" ]
+    },
+    "common": {
+      "description": "common properties for a cluster",
+      "type": "object",
+      "required": ["url", "slug", "projectId", "username", "password", "environment"],
+      "properties": {
+        "name": {
+          "description": "name of the customer",
+          "type": "string"
+        },
+        "slug": {
+          "description": "the human-readable identfier for this cluster",
+          "type": "string"
+        },
+        "subdomain": {
+          "description": "the subdomain of the cluster.  Could be distinct from the slug, but usually the same",
+          "type": "string"
+        },
+        "domain": {
+          "description": "the domain for the cluster",
+          "type": "string",
+          "enum": [ "npme.io", "npm-js.net" ]
+        },
+        "url": {
+          "description": "the full hostname for the cluster, the conjunction of `subdomain`.`domain`",
+          "type": "string"
+        },
+        "projectId": {
+          "description": "the human-readable slug for the cluster's project in GCS",
+          "type": "string"
+        },
+        "projectNumber": {
+          "description": "the numeric ID for the cluster's project in GCS",
+          "type": "number"
+        },
+        "username": {
+          "description": "the username for basic auth for the cluster's Kubernetes API",
+          "type": "string"
+        },
+        "password": {
+          "description": "the password for basic auth for the cluster's Kubernetes API",
+          "type": "string"
+        },
+        "environment": { "$ref": "http://npm-js.net/cluster-info#/definitions/environment" }
+      }
+    }
+  }
+}
