@@ -124,10 +124,6 @@
           "description": "the human-readable slug for the cluster's project in GCS",
           "type": "string"
         },
-        "projectNumber": {
-          "description": "the numeric ID for the cluster's project in GCS",
-          "type": "number"
-        },
         "username": {
           "description": "the username for basic auth for the cluster's Kubernetes API",
           "type": "string"
