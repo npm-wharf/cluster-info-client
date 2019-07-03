@@ -117,12 +117,10 @@ module.exports = function createClient (options = {}) {
     return Object.keys(value).sort()
   }
 
-  async function getCluster (slug, environment) {
+  async function getCluster (slug) {
     await _ensureClusterExists(slug)
-    if (!environment) {
-      const { value: clusterMap } = await _readVault(_allClustersPath())
-      environment = /clusters\/([^/]+)\//.exec(clusterMap[slug])[1]
-    }
+    const { value: clusterMap } = await _readVault(_allClustersPath())
+    const environment = /clusters\/([^/]+)\//.exec(clusterMap[slug])[1]
     return _getSecret(slug, environment)
   }
 
@@ -168,8 +166,10 @@ module.exports = function createClient (options = {}) {
 
     let { channels, environment } = cluster
 
-    channels.push(channel)
-    channels.sort()
+    if (!channels.includes(channel)) {
+      channels.push(channel)
+      channels.sort()
+    }
 
     await Promise.all([
       _addClusterToChannel(slug, channel),

@@ -72,6 +72,10 @@ tap.test('channels', async t => {
       vaultMock.done()
       nock.cleanAll()
     })
+
+    t.test('add "all" is a noop', async t => {
+      await client.createChannel('all')
+    })
   })
 
   t.test('listChannels', async t => {
@@ -136,6 +140,10 @@ tap.test('registerCluster', async t => {
       client.registerCluster('lolfail', 'production', {}, ['bogus']))
 
     vaultMock.done()
+  })
+
+  t.test('fails if env is not a string', async t => {
+    await t.rejects(client.registerCluster('lolfail', { lol: 'wat' }, {}))
   })
 
   process.env.NOCK_OFF || t.test('fails if vault has issues', async t => {
@@ -338,6 +346,24 @@ tap.test('addClusterToChannel', async t => {
       .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: [] }))
       .put('/v1/kv/data/channels/production', kvPut({ value: ['my-cluster3'] })).reply(200)
       .put('/v1/kv/data/clusters/production/my-cluster3', kvPut({ channels: ['default', 'production'] })).reply(200)
+
+    await client.addClusterToChannel('my-cluster3', 'production')
+
+    vaultMock.done()
+  })
+
+  t.test('idempotent', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/all').times(2).reply(200, kvGet({ value: {
+        'my-cluster3': 'clusters/production/my-cluster3'
+      } }))
+      .get('/v1/kv/data/clusters/production/my-cluster3').times(2).reply(200, kvGet({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: ['default', 'production']
+      }))
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default', 'production'] }))
+      .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: ['my-cluster3'] }))
 
     await client.addClusterToChannel('my-cluster3', 'production')
 
