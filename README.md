@@ -61,9 +61,10 @@ const cluster = await client.getCluster('some-cluster')
 
 assert.eql(cluster, {
     name: 'some-cluster',
+    environment: 'production',
     props: {
         password: 'hunter2'
-    }
+    },
     channels: ['production', 'p100']
 })
 ```
@@ -81,20 +82,20 @@ assert.eql(clusters, [
 ])
 ```
 
-### registerCluster(name, props, [secretProps], [channels])
+### registerCluster(slug, environment, props, [channels])
 
-Registers a single cluster in the system.  `props` go in Redis, `secretProps` go in vault.  You can also optionally list the channels the cluster should be in.  An error will be thrown if any of the channels do not exist.
+Registers a single cluster in the system.  `props` go in vault.  You can also optionally list the channels the cluster should be in.  An error will be thrown if any of the channels do not exist.
 
 ```js
-await client.addCluster('some-cluster', {key: 'arbitrary'}, {password: 'hunter2'}, ['production'])
+await client.addCluster('some-cluster', 'staging', {password: 'hunter2'}, ['production'])
 ```
 
-### updateCluster(name, newProps, [newSecretProps])
+### updateCluster(slug, newEnvironment, newProps)
 
-Modify an existing cluster, replacing the existing `props` and `secretProps` with new sets. It is best to `getCluster` beforehand.
+Modify an existing cluster, replacing the existing `environment` and/or `props` with new sets. It is best to `getCluster` beforehand.
 
 ```js
-await client.updateCluster('some-cluster', {key: 'arbitrary'}, {password: 'hunter3'})
+await client.updateCluster('some-cluster', 'dev', {password: 'hunter3'})
 ```
 
 ### unregisterCluster(name)
