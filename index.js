@@ -157,15 +157,33 @@ module.exports = function createClient (options = {}) {
   }
 
   async function createChannel (channel) {
-    await redis.sadd(CHANNELS_KEY, channel)
+    const list = await listChannels()
+    if (list.includes(channel)) return
+    list.push(channel)
+    list.sort()
+
+    await vault.write(`${vaultPrefix}data/channels/all`, {
+      data: { value: JSON.stringify(list) }
+    })
+
+    await vault.write(`${vaultPrefix}data/channels/${channel}`, {
+      data: { value: '[]' }
+    })
   }
 
   async function deleteChannel (channel) {
-    await redis.srem(CHANNELS_KEY, channel)
+    const list = await listChannels()
+    const newList = list.filter(c => c !== channel)
+
+    await vault.write(`${vaultPrefix}data/channels/all`, {
+      data: { value: JSON.stringify(newList) }
+    })
+
+    await vault.delete(`${vaultPrefix}data/channels/${channel}`)
   }
 
   async function listChannels () {
-    return (await redis.smembers(CHANNELS_KEY)).sort()
+    return _readVault(`${vaultPrefix}data/channels/all`)
   }
 
   async function addClusterToChannel (name, channel) {

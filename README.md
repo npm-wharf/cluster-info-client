@@ -44,9 +44,9 @@ Vault will have:
 - a `/clusters/all` record whose value is a map of all `clusterSlug`s to their path in Vault, eg `mycluster: '/clusters/production/mycluster'`
 - a map of clusters `/clusters/${environment}/${clusterSlug}` containing all information specific to a single cluster.  The record will have
   + A `value` key with a JSON blob of general cluster info, as defined by the schema.
-  + A `channels` key with a comma-separated list of all channels the cluster belongs to, e.g. `[...channelNames].join()`
+  + A `channels` key with a JSON array of all channels the cluster belongs to
 - a `/channels/all` record whose `value` is a comma-separated list of all channels
-- a series of `/channels/${channel}` record whose `value` is a comma-separated list of `clusterSlug`s, that enumerates all clusters within a given channel
+- a series of `/channels/${channel}` record whose `value` is a JSON array of `clusterSlug`s, that enumerates all clusters within a given channel
 
 ## API
 

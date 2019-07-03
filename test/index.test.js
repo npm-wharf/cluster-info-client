@@ -3,32 +3,14 @@ const nock = require('nock')
 const Redis = require('ioredis')
 const createInfoClient = require('../')
 
+nock.disableNetConnect()
+
+const kvData = (obj) => ({ data: { data: obj } })
+
 const createClient = () => createInfoClient({
   vaultHost: process.env.VAULT_ADDR || 'http://vault.dev:8200',
   vaultToken: process.env.VAULT_TOKEN || 's.deadb33f',
   vaultPrefix: process.env.VAULT_PREFIX || 'kv/'
-})
-
-tap.test('check redis', async t => {
-  const redis = new Redis({ maxRetriesPerRequest: 0 })
-  try {
-    await redis.keys('*')
-  } catch (e) {
-    throw new Error('redis-server must be running locally')
-  } finally {
-    redis.disconnect()
-  }
-})
-
-tap.test('empty redis', async t => {
-  const redis = new Redis()
-  await redis.del('channels')
-  const clusters = await redis.keys('cluster:*')
-  await Promise.all(clusters.map(cl => redis.del(cl)))
-  const channels = await redis.keys('channels:*')
-  await Promise.all(channels.map(chan => redis.del(chan)))
-
-  redis.disconnect()
 })
 
 tap.test('create and close a client', async t => {
@@ -43,33 +25,84 @@ tap.test('create and close a client w/ defaults', async t => {
 
 tap.test('channels', async t => {
   const client = createClient()
-  const redis = new Redis()
 
   t.test('createChannel', async t => {
-    await client.createChannel('default')
-    t.same(await redis.smembers('channels'), ['default'])
+    t.test('add one', async t => {
+      const vaultMock = nock('http://vault.dev:8200/')
+        .get('/v1/kv/data/channels/all')
+        .reply(200, kvData({ value: '["dummy"]' }))
+        .put('/v1/kv/data/channels/all', {
+          data: { value: JSON.stringify(['default', 'dummy']) }
+        }).reply(200)
+        .put('/v1/kv/data/channels/default', {
+          data: { value: '[]' }
+        }).reply(200)
 
-    await client.createChannel('other')
-    t.same((await redis.smembers('channels')).sort(), ['default', 'other'])
+      console.log('add default')
+      await client.createChannel('default')
+      vaultMock.done()
+    })
 
-    await client.createChannel('default')
-    t.same((await redis.smembers('channels')).sort(), ['default', 'other'])
+    t.test('add another', async t => {
+      const vaultMock = nock('http://vault.dev:8200/')
+        .get('/v1/kv/data/channels/all')
+        .reply(200, kvData({ value: '["default","dummy"]' }))
+        .put('/v1/kv/data/channels/all', {
+          data: { value: JSON.stringify(['default', 'dummy', 'other']) }
+        }).reply(200)
+        .put('/v1/kv/data/channels/other', {
+          data: { value: '[]' }
+        }).reply(200)
+
+      console.log('add other')
+      await client.createChannel('other')
+      vaultMock.done()
+    })
+
+    t.test('add existing', async t => {
+      const vaultMock = nock('http://vault.dev:8200/')
+        .get('/v1/kv/data/channels/all')
+        .reply(200, kvData({ value: '["default","dummy","other"]' }))
+
+      console.log('add default')
+      await client.createChannel('default')
+
+      vaultMock.done()
+      nock.cleanAll()
+    })
   })
 
   t.test('listChannels', async t => {
-    await client.createChannel('production')
+    const vaultMock = nock('http://vault.dev:8200/')
+      .get('/v1/kv/data/channels/all')
+      .reply(200, kvData({ value: '["default","dummy","other"]' }))
+
     const channels = await client.listChannels()
-    t.same(channels, ['default', 'other', 'production'])
+    t.same(channels, ['default', 'dummy', 'other'])
+    vaultMock.done()
   })
 
   t.test('deleteChannel', async t => {
+    const vaultMock = nock('http://vault.dev:8200/')
+      .get('/v1/kv/data/channels/all')
+      .reply(200, kvData({ value: '["default","dummy","other"]' }))
+      .put('/v1/kv/data/channels/all', {
+        data: { value: JSON.stringify(['default', 'dummy']) }
+      }).reply(200)
+      .delete('/v1/kv/data/channels/other').reply(200)
+      .get('/v1/kv/data/channels/all')
+      .reply(200, kvData({ value: '["default","dummy"]' }))
+
     await client.deleteChannel('other')
-    t.same(await client.listChannels(), ['default', 'production'])
+
+    t.same(await client.listChannels(), ['default', 'dummy'])
+
+    vaultMock.done()
+    nock.cleanAll()
   })
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
   })
 })
 
@@ -173,7 +206,7 @@ tap.test('updateCluster', async t => {
   t.test('noop if data is the same', async t => {
     const vaultMock = nock('http://vault.dev:8200')
       .get('/v1/kv/data/clusters/production/my-cluster')
-      .reply(200, { data: { data: { value: JSON.stringify({ password: 'letmein' }) } } })
+      .reply(200, kvData({ value: JSON.stringify({ password: 'letmein' }) }))
 
     await client.updateCluster('my-cluster', { baz: 1 }, { password: 'letmein' })
 
@@ -252,7 +285,7 @@ tap.test('getCluster', async t => {
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
       .get('/v1/kv/data/clusters/production/my-cluster')
-      .reply(200, { data: { data: { value: '{"password":"letmein"}' } } })
+      .reply(200, kvData({ value: '{"password":"letmein"}' }))
       .get('/v1/kv/data/clusters/production/my-cluster2')
       .reply(404)
 
@@ -293,7 +326,7 @@ tap.test('addClusterToChannel', async t => {
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
       .get('/v1/kv/data/clusters/production/my-cluster3')
-      .reply(200, { data: { data: { value: '{"password":"letmein"}' } } })
+      .reply(200, kvData({ value: '{"password":"letmein"}' }))
     await client.addClusterToChannel('my-cluster3', 'production')
 
     const cluster = await client.getCluster('my-cluster3')
@@ -468,7 +501,7 @@ tap.test('addServiceAccount', async t => {
   t.test('should be idempotent', async t => {
     const vaultMock = nock('http://vault.dev:8200')
       .get('/v1/kv/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
-      .reply(200, { data: { data: { value: JSON.stringify(SA_1, null, 2) } } })
+      .reply(200, kvData({ value: JSON.stringify(SA_1, null, 2) }))
 
     await client.addServiceAccount(SA_1)
     vaultMock.done()
@@ -490,7 +523,7 @@ tap.test('getServiceAccount', async t => {
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
       .get('/v1/kv/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
-      .reply(200, { data: { data: { value: JSON.stringify(SA_1, null, 2) } } })
+      .reply(200, kvData({ value: JSON.stringify(SA_1, null, 2) }))
 
     const result = await client.getServiceAccount('my-sa1@my-project.iam.gserviceaccount.com')
 
@@ -619,7 +652,7 @@ tap.test('create client with AppRole', async t => {
       auth: { client_token: 's.somet0k3n' }
     })
     .get('/v1/kv/data/clusters/production/my-cluster')
-    .reply(200, { data: { data: { value: '{"password":"letmein"}' } } })
+    .reply(200, kvData({ value: '{"password":"letmein"}' }))
 
   const client = createInfoClient({
     vaultHost: process.env.VAULT_HOST || 'http://vault.dev:8200',
