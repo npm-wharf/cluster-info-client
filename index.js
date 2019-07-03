@@ -1,15 +1,12 @@
-const Redis = require('ioredis')
+'use strict'
+
 const createVault = require('node-vault')
 const rpn = require('request-promise-native')
 const equal = require('fast-deep-equal')
-const CLUSTER_PREFIX = 'cluster:'
-const CHANNELS_PREFIX = 'channels:'
-const CHANNELS_KEY = 'channels'
 const SA_PATH = 'credentials/google/'
 
 module.exports = function createClient (options = {}) {
   const {
-    redisUrl = 'redis://localhost:6379',
     vaultHost = 'http://localhost:8200',
     vaultToken = process.env.VAULT_TOKEN,
     vaultRoleId = process.env.VAULT_ROLE_ID,
@@ -17,7 +14,6 @@ module.exports = function createClient (options = {}) {
     vaultPrefix = process.env.VAULT_SECRET_PREFIX || 'kv/'
   } = options
 
-  const redis = new Redis(redisUrl)
   let vault = createVault({
     endpoint: vaultHost,
     token: vaultToken,
@@ -70,103 +66,78 @@ module.exports = function createClient (options = {}) {
     close
   }
 
-  async function registerCluster (name, props, secretProps = {}, channels = []) {
-    const {
-      environment = 'production'
-    } = props
+  async function registerCluster (slug, environment, secretProps = {}, channels = []) {
+    await vaultAuth
     await _ensureChannelsExist(channels)
 
-    let txn = _setClusterProps(redis.multi(), name, props)
+    const props = {
+      environment,
+      value: secretProps,
+      channels
+    }
 
     if (channels.length > 0) {
-      txn = txn.hset(CLUSTER_PREFIX + name, CHANNELS_KEY, channels.join(','))
-      channels.forEach(chan => {
-        txn = txn.sadd(CHANNELS_PREFIX + chan, name)
-      })
+      await Promise.all(channels.map(chan => _addClusterToChannel(slug, chan)))
     }
 
-    if (Object.keys(secretProps).length > 0) {
-      await _saveSecret(secretProps, name, environment)
-    }
+    await _saveClusterData(props, slug, environment)
 
-    await txn.exec()
+    const { value } = await _readVault(_allClustersPath())
+    value[slug] = _secretPath(slug, environment)
+    await vault.write(_allClustersPath(), { data: { value: JSON.stringify(value, null, 2) } })
   }
 
-  async function updateCluster (name, props, secretProps = {}) {
-    const {
-      environment = 'production'
-    } = props
-    await _ensureClusterExists(name)
+  async function updateCluster (slug, environment, secretProps) {
+    await vaultAuth
+    await _ensureClusterExists(slug)
 
-    const channels = await redis.hget(CLUSTER_PREFIX + name, CHANNELS_KEY)
-
-    let txn = redis.multi()
-      .del(CLUSTER_PREFIX + name)
-      .hset(CLUSTER_PREFIX + name, CHANNELS_KEY, channels)
-
-    txn = _setClusterProps(txn, name, props)
-
-    if (Object.keys(secretProps).length > 0) {
-      await _saveSecret(secretProps, name, environment)
-    } else {
-      await _deleteSecret(name, environment)
+    const props = {
+      value: secretProps,
+      environment
     }
 
-    await txn.exec()
+    await _saveClusterData(props, slug, environment)
   }
 
-  async function unregisterCluster (name) {
-    await _ensureClusterExists(name)
+  async function unregisterCluster (slug) {
+    await vaultAuth
+    await _ensureClusterExists(slug)
 
-    const props = await redis.hgetall(CLUSTER_PREFIX + name)
-    const {
-      [CHANNELS_KEY]: channels,
-      environment = 'production'
-    } = props
-
-    let txn = redis.multi()
+    const { channels, environment } = await getCluster(slug)
 
     // un-associate the cluster from channels
-    txn = channels
-      .split(',')
-      .reduce((tx, chan) => tx.srem(CHANNELS_PREFIX + chan, name), txn)
+    await Promise.all(channels.map(channel => _removeClusterFromChannel(slug, channel)))
 
-    txn = txn.del(CLUSTER_PREFIX + name)
-
-    await Promise.all([
-      txn.exec(),
-      _deleteSecret(name, environment)
-    ])
+    await _deleteSecret(slug, environment)
   }
 
   async function listClusters () {
-    const keys = await redis.keys(CLUSTER_PREFIX + '*')
-    return keys.map(key => key.split(CLUSTER_PREFIX)[1]).sort()
+    const { value } = await _readVault(_allClustersPath())
+    return Object.keys(value).sort()
   }
 
-  async function getCluster (name) {
-    await _ensureClusterExists(name)
-    const props = await redis.hgetall(CLUSTER_PREFIX + name)
-    if (props[CHANNELS_KEY]) props[CHANNELS_KEY] = props[CHANNELS_KEY].split(',')
-    props.name = name
-    const {
-      environment = 'production'
-    } = props
-    props.secretProps = await _getSecret(name, environment)
-    return props
+  async function getCluster (slug, environment) {
+    await _ensureClusterExists(slug)
+    if (!environment) {
+      const { value: clusterMap } = await _readVault(_allClustersPath())
+      environment = /clusters\/([^/]+)\//.exec(clusterMap[slug])[1]
+    }
+    return _getSecret(slug, environment)
   }
 
   async function createChannel (channel) {
+    if (channel === 'all') return
+
     const list = await listChannels()
     if (list.includes(channel)) return
     list.push(channel)
     list.sort()
 
-    await vault.write(`${vaultPrefix}data/channels/all`, {
+    await vault.write(_channelPath('all'), {
       data: { value: JSON.stringify(list) }
     })
 
-    await vault.write(`${vaultPrefix}data/channels/${channel}`, {
+    await vault.write(_channelPath(channel), {
       data: { value: '[]' }
     })
   }
@@ -183,55 +154,49 @@ module.exports = function createClient (options = {}) {
   }
 
   async function listChannels () {
-    return _readVault(`${vaultPrefix}data/channels/all`)
+    await vaultAuth
+    return (await _readVault(`${vaultPrefix}data/channels/all`)).value
   }
 
-  async function addClusterToChannel (name, channel) {
-    await Promise.all([
-      _ensureClusterExists(name),
+  async function addClusterToChannel (slug, channel) {
+    await vaultAuth
+    const [ cluster ] = await Promise.all([
+      getCluster(slug),
       _ensureChannelsExist([channel])
     ])
 
-    const rawChannels = await redis.hget(CLUSTER_PREFIX + name, CHANNELS_KEY)
-    let channels = []
-    if (rawChannels) {
-      channels = rawChannels.split(',')
-    }
+    let { channels, environment } = cluster
+
     channels.push(channel)
+    channels.sort()
 
-    await redis.multi()
-      .hset(CLUSTER_PREFIX + name, CHANNELS_KEY, channels.sort().join(','))
-      .sadd(CHANNELS_PREFIX + channel, name)
-      .exec()
+    await Promise.all([
+      _addClusterToChannel(slug, channel),
+      _saveClusterData({ channels }, slug, environment)
+    ])
   }
 
-  async function removeClusterFromChannel (name, channel) {
-    await Promise.all([
-      _ensureClusterExists(name),
+  async function removeClusterFromChannel (slug, channel) {
+    await vaultAuth
+    const [ cluster ] = await Promise.all([
+      getCluster(slug),
       _ensureChannelsExist([channel])
     ])
 
-    const rawChannels = await redis.hget(CLUSTER_PREFIX + name, CHANNELS_KEY)
-    let channels = []
-    if (rawChannels) {
-      channels = rawChannels.split(',')
-    }
+    let { channels, environment } = cluster
+
     channels = channels.filter(chan => chan !== channel)
 
-    let txn = redis.multi()
-      .srem(CHANNELS_PREFIX + channel, name)
-
-    if (channels.length === 0) {
-      txn = txn.hdel(CLUSTER_PREFIX + name, CHANNELS_KEY)
-    } else {
-      txn = txn.hset(CLUSTER_PREFIX + name, CHANNELS_KEY, channels.join(','))
-    }
-    await txn.exec()
+    await Promise.all([
+      _removeClusterFromChannel(slug, channel),
+      _saveClusterData({ channels }, slug, environment)
+    ])
   }
 
   async function listClustersByChannel (channel) {
-    const list = await redis.smembers(CHANNELS_PREFIX + channel)
-    return list.sort()
+    await vaultAuth
+    const { value } = await _readVault(_channelPath(channel))
+    return value
   }
 
   async function addServiceAccount (jsonServiceAccountKey) {
@@ -246,7 +211,7 @@ module.exports = function createClient (options = {}) {
   }
 
   async function getServiceAccount (serviceAccountAddress) {
-    return _readVault(_secretSAPath(serviceAccountAddress))
+    return (await _readVault(_secretSAPath(serviceAccountAddress))).value
   }
 
   async function removeServiceAccount (serviceAccountAddress) {
@@ -261,7 +226,7 @@ module.exports = function createClient (options = {}) {
   }
 
   async function getCommon (provider = 'GKE') {
-    return _readVault(`${vaultPrefix}data/clusters/common/${provider.toLowerCase()}`)
+    return (await _readVault(`${vaultPrefix}data/clusters/common/${provider.toLowerCase()}`)).value
   }
 
   async function issueCertificate (role, domain, ttl = 5 * 60) {
@@ -271,42 +236,63 @@ module.exports = function createClient (options = {}) {
   }
 
   function close () {
-    redis.disconnect()
   }
 
-  function _setClusterProps (txn, name, props) {
-    return Object.keys(props).reduce((tx, key) => {
-      return tx.hset(CLUSTER_PREFIX + name, key, props[key])
-    }, txn)
-  }
-
-  async function _ensureClusterExists (name) {
-    const exists = await redis.exists(CLUSTER_PREFIX + name)
-    if (!exists) throw new Error(`cluster '${name}' does not exist`)
+  async function _ensureClusterExists (slug) {
+    const resp = vault.read(`${vaultPrefix}data/clusters/all`)
+    if (!resp.data.data[slug]) throw new Error(`cluster '${slug}' does not exist`)
   }
 
   async function _ensureChannelsExist (channels) {
-    let txn = redis.multi()
-    channels.forEach(chan => {
-      txn = txn.sismember(CHANNELS_KEY, chan)
-    })
+    const list = await listChannels()
 
-    const flags = await txn.exec()
-
-    flags.forEach(([_, flag], idx) => {
-      if (!flag) throw new Error(`channel '${channels[idx]}' must exist`)
+    channels.forEach(channel => {
+      if (!list.contains(channel)) {
+        throw new Error(`channel '${channel}' must exist`)
+      }
     })
   }
 
-  async function _saveSecret (props, name, environment) {
-    const previous = await _readVault(_secretPath(name, environment))
-    if (equal(previous, props)) return
-    await vaultAuth
-    await vault.write(_secretPath(name, environment), { data: { value: JSON.stringify(props, null, 2) } })
+  async function _addClusterToChannel (slug, channel) {
+    const { value: clusters } = await _readVault(_channelPath(channel))
+
+    if (clusters.includes(slug)) return
+
+    clusters.push(slug)
+    await vault.write(_channelPath(channel), { data: { value: JSON.stringify(clusters) } })
   }
 
-  async function _getSecret (name, environment) {
-    return _readVault(_secretPath(name, environment))
+  async function _removeClusterFromChannel (slug, channel) {
+    const { value: clusters } = await _readVault(_channelPath(channel))
+
+    const newClusters = clusters.filter(cl => cl !== slug)
+
+    if (newClusters.length === clusters.length) return
+
+    await vault.write(_channelPath(channel), { data: { value: JSON.stringify(clusters) } })
+  }
+
+  async function _saveClusterData (props, slug, environment) {
+    const previous = await _readVault(_secretPath(slug, environment))
+
+    // only set keys that have different data
+    const next = {}
+    Object.keys(props).forEach(key => {
+      if (!equal(previous[key], props[key])) next[key] = props[key]
+    })
+
+    if (Object.keys(next).length === 0) return
+
+    await vault.write(_secretPath(slug, environment), {
+      data: mapValues(next, val => {
+        if (typeof val === 'string') return val
+        return JSON.stringify(val, null, 2)
+      })
+    })
+  }
+
+  async function _getSecret (slug, environment) {
+    return _readVault(_secretPath(slug, environment))
   }
 
   async function _readVault (path) {
@@ -319,7 +305,14 @@ module.exports = function createClient (options = {}) {
       // istanbul ignore next
       throw err
     }
-    return JSON.parse(resp.data.data.value)
+    const result = mapValues(resp.data.data, val => {
+      try {
+        return JSON.parse(val)
+      } catch (e) {
+        return val
+      }
+    })
+    return result
   }
 
   async function _deleteSecret (name, environment) {
@@ -331,7 +324,23 @@ module.exports = function createClient (options = {}) {
     return `${vaultPrefix}data/clusters/${environment}/${name}`
   }
 
+  function _allClustersPath () {
+    return `${vaultPrefix}data/clusters/all`
+  }
+
   function _secretSAPath (addr) {
     return `${vaultPrefix}data/${SA_PATH}${addr}`
   }
+
+  function _channelPath (channel) {
+    return `${vaultPrefix}data/channels/${channel}`
+  }
+}
+
+function mapValues (obj, fn) {
+  const newObj = {}
+  Object.keys(obj).forEach(key => {
+    newObj[key] = fn(obj[key])
+  })
+  return newObj
 }

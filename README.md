@@ -45,14 +45,14 @@ Vault will have:
 - a map of clusters `/clusters/${environment}/${clusterSlug}` containing all information specific to a single cluster.  The record will have
   + A `value` key with a JSON blob of general cluster info, as defined by the schema.
   + A `channels` key with a JSON array of all channels the cluster belongs to
-- a `/channels/all` record whose `value` is a comma-separated list of all channels
-- a series of `/channels/${channel}` record whose `value` is a JSON array of `clusterSlug`s, that enumerates all clusters within a given channel
+- a `/channels/all` record whose `value` is a JSON array of all channels
+- a series of `/channels/${channel}` records whose `value` is a JSON array of `clusterSlug`s, that enumerates all clusters within a given channel
 
 ## API
 
 All `client` methods are async and return Promises.
 
-### getCluster(name)
+### getCluster(slug)
 
 Gets all information about a single cluster.
 
@@ -98,7 +98,7 @@ Modify an existing cluster, replacing the existing `environment` and/or `props` 
 await client.updateCluster('some-cluster', 'dev', {password: 'hunter3'})
 ```
 
-### unregisterCluster(name)
+### unregisterCluster(slug)
 
 Un-register a cluster with the system.  Channel associations will also be removed.
 
@@ -137,7 +137,7 @@ Removes a channel.  Channel must have no clusters associated with it, otherwise 
 await client.removeChannel('integration')
 ```
 
-### addClusterToChannel(name, channel)
+### addClusterToChannel(slug, channel)
 
 Adds a cluster to a channel.  The cluster and channel must exist, otherwise an error is thrown.
 
@@ -145,7 +145,7 @@ Adds a cluster to a channel.  The cluster and channel must exist, otherwise an e
 await client.addClusterToChannel('some-cluster', 'production')
 ```
 
-### removeClusterFromChannel(name, channel)
+### removeClusterFromChannel(slug, channel)
 
 Removes a cluster to from a channel.
 
