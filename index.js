@@ -66,7 +66,7 @@ module.exports = function createClient (options = {}) {
     close
   }
 
-  async function registerCluster (slug, environment, secretProps = {}, channels = []) {
+  async function registerCluster (slug, environment, secretProps, channels = []) {
     if (typeof environment !== 'string') throw new Error('`environment` must be a string')
     await vaultAuth
     await _ensureChannelsExist(channels)
