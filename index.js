@@ -67,6 +67,7 @@ module.exports = function createClient (options = {}) {
   }
 
   async function registerCluster (slug, environment, secretProps = {}, channels = []) {
+    if (typeof environment !== 'string') throw new Error('`environment` must be a string')
     await vaultAuth
     await _ensureChannelsExist(channels)
 
@@ -134,7 +135,7 @@ module.exports = function createClient (options = {}) {
     list.sort()
 
     await vault.write(_channelPath('all'), {
-      data: { value: JSON.stringify(list) }
+      data: { value: JSON.stringify(list, null, 2) }
     })
 
     await vault.write(_channelPath(channel), {
@@ -147,7 +148,7 @@ module.exports = function createClient (options = {}) {
     const newList = list.filter(c => c !== channel)
 
     await vault.write(`${vaultPrefix}data/channels/all`, {
-      data: { value: JSON.stringify(newList) }
+      data: { value: JSON.stringify(newList, null, 2) }
     })
 
     await vault.delete(`${vaultPrefix}data/channels/${channel}`)
@@ -211,7 +212,8 @@ module.exports = function createClient (options = {}) {
   }
 
   async function getServiceAccount (serviceAccountAddress) {
-    return (await _readVault(_secretSAPath(serviceAccountAddress))).value
+    const resp = await _readVault(_secretSAPath(serviceAccountAddress))
+    if (resp) return resp.value
   }
 
   async function removeServiceAccount (serviceAccountAddress) {
@@ -239,15 +241,16 @@ module.exports = function createClient (options = {}) {
   }
 
   async function _ensureClusterExists (slug) {
-    const resp = vault.read(`${vaultPrefix}data/clusters/all`)
-    if (!resp.data.data[slug]) throw new Error(`cluster '${slug}' does not exist`)
+    const resp = await vault.read(`${vaultPrefix}data/clusters/all`)
+    const map = JSON.parse(resp.data.data.value)
+    if (!map[slug]) throw new Error(`cluster '${slug}' does not exist`)
   }
 
   async function _ensureChannelsExist (channels) {
     const list = await listChannels()
 
     channels.forEach(channel => {
-      if (!list.contains(channel)) {
+      if (!list.includes(channel)) {
         throw new Error(`channel '${channel}' must exist`)
       }
     })
@@ -259,7 +262,8 @@ module.exports = function createClient (options = {}) {
     if (clusters.includes(slug)) return
 
     clusters.push(slug)
-    await vault.write(_channelPath(channel), { data: { value: JSON.stringify(clusters) } })
+    clusters.sort()
+    await vault.write(_channelPath(channel), { data: { value: JSON.stringify(clusters, null, 2) } })
   }
 
   async function _removeClusterFromChannel (slug, channel) {
@@ -269,11 +273,11 @@ module.exports = function createClient (options = {}) {
 
     if (newClusters.length === clusters.length) return
 
-    await vault.write(_channelPath(channel), { data: { value: JSON.stringify(clusters) } })
+    await vault.write(_channelPath(channel), { data: { value: JSON.stringify(newClusters, null, 2) } })
   }
 
   async function _saveClusterData (props, slug, environment) {
-    const previous = await _readVault(_secretPath(slug, environment))
+    const previous = (await _readVault(_secretPath(slug, environment))) || {}
 
     // only set keys that have different data
     const next = {}
