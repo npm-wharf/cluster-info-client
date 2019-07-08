@@ -45,7 +45,6 @@ tap.test('channels', async t => {
         .put('/v1/kv/data/channels/all', kvPut({ value: ['default', 'dummy'] })).reply(200)
         .put('/v1/kv/data/channels/default', kvPut({ value: '[]' })).reply(200)
 
-      console.log('add default')
       await client.createChannel('default')
       vaultMock.done()
     })
@@ -56,7 +55,6 @@ tap.test('channels', async t => {
         .put('/v1/kv/data/channels/all', kvPut({ value: ['default', 'dummy', 'other'] })).reply(200)
         .put('/v1/kv/data/channels/other', { data: { value: '[]' } }).reply(200)
 
-      console.log('add other')
       await client.createChannel('other')
       vaultMock.done()
     })
@@ -66,7 +64,6 @@ tap.test('channels', async t => {
         .get('/v1/kv/data/channels/all')
         .reply(200, kvGet({ value: '["default","dummy","other"]' }))
 
-      console.log('add default')
       await client.createChannel('default')
 
       vaultMock.done()
