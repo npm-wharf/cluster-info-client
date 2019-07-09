@@ -94,7 +94,7 @@ tap.test('channels', async t => {
   t.test('deleteChannel', async t => {
     const vaultMock = nock('http://vault.dev:8200/')
       .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default","dummy","other","production"]' }))
-      .put('/v1/kv/data/channels/all', kvPut({ value: ['default', 'dummy'] })).reply(200)
+      .put('/v1/kv/data/channels/all', kvPut({ value: ['default', 'dummy', 'production'] })).reply(200)
       .delete('/v1/kv/data/channels/other').reply(200)
       .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default","dummy","production"]' }))
 
@@ -357,7 +357,11 @@ tap.test('addClusterToChannel', async t => {
       .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default', 'production'] }))
       .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: [] }))
       .put('/v1/kv/data/channels/production', kvPut({ value: ['my-cluster3'] })).reply(200)
-      .put('/v1/kv/data/clusters/production/my-cluster3', kvPut({ channels: ['default', 'production'] })).reply(200)
+      .put('/v1/kv/data/clusters/production/my-cluster3', kvPut({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: ['default', 'production']
+      })).reply(200)
 
     await client.addClusterToChannel('my-cluster3', 'production')
 
@@ -395,7 +399,10 @@ tap.test('addClusterToChannel', async t => {
       .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default', 'production'] }))
       .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: [] }))
       .put('/v1/kv/data/channels/production', kvPut({ value: ['my-cluster2'] })).reply(200)
-      .put('/v1/kv/data/clusters/production/my-cluster2', kvPut({ channels: ['production'] })).reply(200)
+      .put('/v1/kv/data/clusters/production/my-cluster2', kvPut({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: ['production'] })).reply(200)
 
     await client.addClusterToChannel('my-cluster2', 'production')
 
@@ -443,7 +450,10 @@ tap.test('removeClusterFromChannel', async t => {
       .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default', 'production'] }))
       .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: ['my-cluster3'] }))
       .put('/v1/kv/data/channels/production', kvPut({ value: [] })).reply(200)
-      .put('/v1/kv/data/clusters/production/my-cluster3', kvPut({ channels: ['default'] })).reply(200)
+      .put('/v1/kv/data/clusters/production/my-cluster3', kvPut({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: ['default'] })).reply(200)
 
     await client.removeClusterFromChannel('my-cluster3', 'production')
 
@@ -463,7 +473,10 @@ tap.test('removeClusterFromChannel', async t => {
       .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default', 'production'] }))
       .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: ['my-cluster2'] }))
       .put('/v1/kv/data/channels/production', kvPut({ value: [] })).reply(200)
-      .put('/v1/kv/data/clusters/production/my-cluster2', kvPut({ channels: [] })).reply(200)
+      .put('/v1/kv/data/clusters/production/my-cluster2', kvPut({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: [] })).reply(200)
 
     await client.removeClusterFromChannel('my-cluster2', 'production')
 
