@@ -404,8 +404,7 @@ tap.test('addClusterToChannel', async t => {
       } }))
       .get('/v1/kv/data/clusters/production/my-cluster2').times(2).reply(200, kvGet({
         value: { password: 'letmein' },
-        environment: 'production',
-        channels: []
+        environment: 'production'
       }))
       .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default', 'production'] }))
       .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: [] }))
@@ -636,6 +635,19 @@ tap.test('getServiceAccount', async t => {
     const result = await client.getServiceAccount('my-sa1@my-project.iam.gserviceaccount.com')
 
     t.same(result, SA_1)
+
+    vaultMock.done()
+  })
+
+  t.test('returns undefined if not found', async t => {
+    if (NOCK_OFF) return
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
+      .reply(404)
+
+    const result = await client.getServiceAccount('my-sa1@my-project.iam.gserviceaccount.com')
+
+    t.same(result, undefined)
 
     vaultMock.done()
   })

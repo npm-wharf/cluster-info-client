@@ -218,7 +218,7 @@ module.exports = function createClient (options = {}) {
 
   async function getServiceAccount (serviceAccountAddress) {
     const resp = await _readVault(_secretSAPath(serviceAccountAddress))
-    if (resp) return resp.value
+    return resp.value
   }
 
   async function removeServiceAccount (serviceAccountAddress) {
@@ -282,7 +282,7 @@ module.exports = function createClient (options = {}) {
   }
 
   async function _saveClusterData (props, slug, environment) {
-    const previous = (await _readVault(_secretPath(slug, environment))) || {}
+    const previous = await _readVault(_secretPath(slug, environment))
 
     // only update if a key has changed
     const needsUpdate = Object.keys(props).some(key => {
