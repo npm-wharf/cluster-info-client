@@ -91,6 +91,17 @@ tap.test('channels', async t => {
     vaultMock.done()
   })
 
+  t.test('listChannels (no channels)', async t => {
+    if (NOCK_OFF) return
+    const vaultMock = nock('http://vault.dev:8200/')
+      .get('/v1/kv/data/channels/all')
+      .reply(404)
+
+    const channels = await client.listChannels()
+    t.same(channels, [])
+    vaultMock.done()
+  })
+
   t.test('deleteChannel', async t => {
     const vaultMock = nock('http://vault.dev:8200/')
       .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default","dummy","other","production"]' }))
