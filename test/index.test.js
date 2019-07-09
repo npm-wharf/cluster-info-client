@@ -84,23 +84,23 @@ tap.test('channels', async t => {
   t.test('listChannels', async t => {
     const vaultMock = nock('http://vault.dev:8200/')
       .get('/v1/kv/data/channels/all')
-      .reply(200, kvGet({ value: '["default","dummy","other"]' }))
+      .reply(200, kvGet({ value: '["default","dummy","other","production"]' }))
 
     const channels = await client.listChannels()
-    t.same(channels, ['default', 'dummy', 'other'])
+    t.same(channels, ['default', 'dummy', 'other', 'production'])
     vaultMock.done()
   })
 
   t.test('deleteChannel', async t => {
     const vaultMock = nock('http://vault.dev:8200/')
-      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default","dummy","other"]' }))
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default","dummy","other","production"]' }))
       .put('/v1/kv/data/channels/all', kvPut({ value: ['default', 'dummy'] })).reply(200)
       .delete('/v1/kv/data/channels/other').reply(200)
-      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default","dummy"]' }))
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default","dummy","production"]' }))
 
     await client.deleteChannel('other')
 
-    t.same(await client.listChannels(), ['default', 'dummy'])
+    t.same(await client.listChannels(), ['default', 'dummy', 'production'])
 
     vaultMock.done()
     nock.cleanAll()
@@ -125,7 +125,7 @@ tap.test('registerCluster', async t => {
         environment: 'production',
         channels: ['default']
       })).reply(200)
-      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: {} }))
+      .get('/v1/kv/data/clusters/all').reply(404)
       .put('/v1/kv/data/clusters/all', kvPut({
         value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' }
       })).reply(200)
@@ -182,7 +182,7 @@ tap.test('updateCluster', async t => {
         value: { password: 'hunter2' },
         environment: 'production'
       }))
-      .put('/v1/kv/data/clusters/production/my-cluster', kvPut({ value: { password: 'letmein' } })).reply({})
+      .put('/v1/kv/data/clusters/production/my-cluster', kvPut({ value: { password: 'letmein' }, environment: 'production' })).reply({})
 
     await client.updateCluster('my-cluster', 'production', { password: 'letmein' })
 
@@ -339,6 +339,10 @@ tap.test('getCluster', async t => {
 
 tap.test('addClusterToChannel', async t => {
   const client = createClient()
+
+  NOCK_OFF && t.test('setup', async t => {
+    await client.createChannel('production')
+  })
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
@@ -689,9 +693,11 @@ tap.test('listServiceAccounts', async t => {
 })
 
 tap.test('getCommon', async t => {
+  if (NOCK_OFF) return
   const client = createClient()
   const commonData = { cluster: { default: true } }
   t.test('setup', async t => {
+    // await vault.write(`${vaultPrefix}data/clusters/common/gke`)
   })
 
   t.test('works', async t => {
@@ -718,6 +724,7 @@ tap.test('getCommon', async t => {
 })
 
 tap.test('create client with AppRole', async t => {
+  if (NOCK_OFF) return
   const vaultMock = nock('http://vault.dev:8200')
     .post('/v1/auth/approle/login', {
       role_id: '1234-1234-1243',
@@ -739,13 +746,9 @@ tap.test('create client with AppRole', async t => {
   vaultMock.done()
 })
 
-tap.test('prevent client re-use after close', async t => {
-  const client = createClient()
-  client.close()
-  t.rejects(async () => client.listClusters())
-})
-
 tap.test('issueCertificate', async t => {
+  if (NOCK_OFF) return
+
   const client = createClient()
   t.test('setup', async t => {
   })

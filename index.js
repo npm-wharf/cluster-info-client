@@ -284,16 +284,16 @@ module.exports = function createClient (options = {}) {
   async function _saveClusterData (props, slug, environment) {
     const previous = (await _readVault(_secretPath(slug, environment))) || {}
 
-    // only set keys that have different data
-    const next = {}
-    Object.keys(props).forEach(key => {
-      if (!equal(previous[key], props[key])) next[key] = props[key]
+    // only update if a key has changed
+    const needsUpdate = Object.keys(props).some(key => {
+      if ((typeof props[key] === 'string') && previous[key] !== props[key]) return true
+      if (!equal(previous[key], props[key])) return true
     })
 
-    if (Object.keys(next).length === 0) return
+    if (!needsUpdate) return
 
     await vault.write(_secretPath(slug, environment), {
-      data: mapValues(next, val => {
+      data: mapValues({ ...previous, ...props }, val => {
         if (typeof val === 'string') return val
         return JSON.stringify(val, null, 2)
       })
@@ -314,13 +314,12 @@ module.exports = function createClient (options = {}) {
       // istanbul ignore next
       throw err
     }
-
     const result = mapValues(resp.data.data, val => {
+      let parsed = val
       try {
-        return JSON.parse(val)
-      } catch (e) {
-        return val
-      }
+        parsed = JSON.parse(val)
+      } catch (e) {}
+      return parsed
     })
     return result
   }
