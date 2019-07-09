@@ -83,7 +83,7 @@ module.exports = function createClient (options = {}) {
 
     await _saveClusterData(props, slug, environment)
 
-    const { value } = await _readVault(_allClustersPath())
+    const { value = {} } = await _readVault(_allClustersPath())
     value[slug] = _secretPath(slug, environment)
     await vault.write(_allClustersPath(), { data: { value: JSON.stringify(value, null, 2) } })
   }
@@ -108,6 +108,10 @@ module.exports = function createClient (options = {}) {
 
     // un-associate the cluster from channels
     await Promise.all(channels.map(channel => _removeClusterFromChannel(slug, channel)))
+
+    const { value: allClusters } = await _readVault(_allClustersPath())
+    delete allClusters[slug]
+    await vault.write(_allClustersPath(), { data: { value: JSON.stringify(allClusters, null, 2) } })
 
     await _deleteSecret(slug, environment)
   }
@@ -154,7 +158,8 @@ module.exports = function createClient (options = {}) {
 
   async function listChannels () {
     await vaultAuth
-    return (await _readVault(`${vaultPrefix}data/channels/all`)).value
+    const { value = [] } = await _readVault(`${vaultPrefix}data/channels/all`)
+    return value
   }
 
   async function addClusterToChannel (slug, channel) {
@@ -164,7 +169,7 @@ module.exports = function createClient (options = {}) {
       _ensureChannelsExist([channel])
     ])
 
-    let { channels, environment } = cluster
+    let { channels = [], environment } = cluster
 
     if (!channels.includes(channel)) {
       channels.push(channel)
@@ -305,10 +310,11 @@ module.exports = function createClient (options = {}) {
       var resp = await vault.read(path)
     } catch (err) {
       // istanbul ignore next
-      if (err.response && err.response.statusCode === 404) return
+      if (err.response && err.response.statusCode === 404) return {}
       // istanbul ignore next
       throw err
     }
+
     const result = mapValues(resp.data.data, val => {
       try {
         return JSON.parse(val)

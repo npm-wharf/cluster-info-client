@@ -2,7 +2,9 @@ const tap = require('tap')
 const nock = require('nock')
 const createInfoClient = require('../')
 
-nock.disableNetConnect()
+const { NOCK_OFF } = process.env
+
+NOCK_OFF || nock.disableNetConnect()
 
 function mapValues (obj, fn) {
   const newObj = {}
@@ -39,6 +41,10 @@ tap.test('channels', async t => {
   const client = createClient()
 
   t.test('createChannel', async t => {
+    NOCK_OFF && t.test('setup', async t => {
+      await client.createChannel('dummy')
+    })
+
     t.test('add one', async t => {
       const vaultMock = nock('http://vault.dev:8200/')
         .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["dummy"]' }))
@@ -143,7 +149,7 @@ tap.test('registerCluster', async t => {
     await t.rejects(client.registerCluster('lolfail', { lol: 'wat' }, {}))
   })
 
-  process.env.NOCK_OFF || t.test('fails if vault has issues', async t => {
+  NOCK_OFF || t.test('fails if vault has issues', async t => {
     const badClient = createInfoClient({
       vaultHost: 'http://vault.dev:8200', vaultToken: 's.bad'
     })
@@ -213,13 +219,13 @@ tap.test('updateCluster', async t => {
 tap.test('unregisterCluster', async t => {
   const client = createClient()
 
-  process.env.NOCK_OFF && t.test('setup', async t => {
+  NOCK_OFF && t.test('setup', async t => {
     await client.registerCluster('todelete', 'production', { deleted: 'very yes' }, ['default'])
   })
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
-      .get('/v1/kv/data/clusters/all').times(3).reply(200, kvGet({ value: {
+      .get('/v1/kv/data/clusters/all').times(4).reply(200, kvGet({ value: {
         'my-cluster': 'clusters/production/my-cluster',
         'todelete': 'clusters/production/todelete'
       } }))
@@ -231,6 +237,9 @@ tap.test('unregisterCluster', async t => {
       }))
       .get('/v1/kv/data/channels/default').reply(200, kvGet({ value: ['todelete', 'my-cluster'] }))
       .put('/v1/kv/data/channels/default', kvPut({ value: ['my-cluster'] })).reply(200)
+      .put('/v1/kv/data/clusters/all', kvPut({ value: {
+        'my-cluster': 'clusters/production/my-cluster'
+      } })).reply(200)
 
     await client.unregisterCluster('todelete')
 
@@ -257,9 +266,10 @@ tap.test('unregisterCluster', async t => {
 tap.test('listClusters', async t => {
   const client = createClient()
 
-  process.env.NOCK_OFF && t.test('setup', async t => {
-    await client.registerCluster('my-cluster4', { foo: 1 }, {}, ['default'])
-    await client.registerCluster('my-cluster3', { foo: 1 }, {}, ['default'])
+  NOCK_OFF && t.test('setup', async t => {
+    await client.registerCluster('my-cluster2', 'production', { password: '1234' }, ['default'])
+    await client.registerCluster('my-cluster3', 'production', { password: '1234' }, ['default'])
+    await client.registerCluster('my-cluster4', 'production', { password: '1234' }, ['default'])
   })
 
   t.test('works', async t => {
@@ -286,7 +296,8 @@ tap.test('listClusters', async t => {
 tap.test('getCluster', async t => {
   const client = createClient()
 
-  t.test('setup', async t => {
+  NOCK_OFF && t.test('setup', async t => {
+    await client.registerCluster('my-cluster', 'production', { password: 'letmein' }, ['default'])
   })
 
   t.test('works', async t => {
@@ -489,7 +500,7 @@ tap.test('removeClusterFromChannel', async t => {
 tap.test('listClustersByChannel', async t => {
   const client = createClient()
 
-  process.env.NOCK_OFF && t.test('setup', async t => {
+  NOCK_OFF && t.test('setup', async t => {
     await client.addClusterToChannel('my-cluster', 'production')
     await client.addClusterToChannel('my-cluster2', 'production')
   })
