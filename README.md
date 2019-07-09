@@ -2,11 +2,11 @@
 
 A JavaScript API for securely fetching information about groups of clusters.
 
-It can store and fetch non-sensitive information in Redis, and secret information in Vault.
+It stores all cluster information in Vault.
 
 It also manages grouping clusters into "channels". Channels are free-form, and a cluster can be placed into any number of channels.  Example uses for channels are deployment groups, environments, zones, or any other grouping of clusters you would want to perform concurrent operations on as a set.
 
-This is intended for use inside fabrik8, kubeform, command hub, support hub, and others.
+This is intended for use inside fabrik8, support hub, and other cluster automation tooling.
 
 
 ## Usage
@@ -15,7 +15,6 @@ This is intended for use inside fabrik8, kubeform, command hub, support hub, and
 const createClusterInfoClient = require('@npm_wharf/cluster-info-client')
 
 const client = createClusterInfoClient({
-    redisUrl: process.env.REDIS_URL || 'redis://localhost:6379'
     vaultAddress: process.env.VAULT_ADDR || 'http://localhost:8200',
     vaultToken: process.env.VAULT_TOKEN
 })
@@ -27,23 +26,13 @@ const clusters = await client.listClusters()
 
 |name|description|default value|
 |---|---|---|
-|redisUrl|the url of the redis server holding basic cluster information|`'redis://localhost:6379'`|
 |vaultHost|the address, including protocol, to the vault server|`'http://localhost:8200'`|
 |vaultRoleId|a Vault AppRole Role ID with read/write access to cluster data| |
 |vaultSecretId|a Vault AppRole Secret ID with read/write access to cluster data| |
 |vaultToken|if not using AppRole, a Vault token can be used directly| |
 |vaultPrefix|prefix to the Vault data path|`'kv/'`|
 
-## Backends
-
-### Redis
-
-Redis will have:
-
-- a series of `cluster:${clusterName}` hashes for arbitrary, non-sensitive cluster info
-- a `channels` set of `[...channelNames]` enumerating all the channel names
-- the `cluster:${clusterName}` hash has a `channels` key of all of its channels, comma separated, e.g. `[...channelNames].join()`
-- a series of `channels:${channelName}` sets of `[...clusterNames]`, that enumerates all clusters within a given channel
+## Backend
 
 ### Vault
 
@@ -52,13 +41,18 @@ Vault will have:
 - a map of Google service account keys at `/credentials/google/${serviceAccountEmail}`
 - a map of AWS IAM keys at `/credentials/amazon/${accountName}`
 - common provider specific data shared amongst clusters at `/clusters/common/${provider}`
-- a map of clusters `/clusters/${environment}/${clusterName}` containing all sensitive information specific to a single cluster
+- a `/clusters/all` record whose value is a map of all `clusterSlug`s to their path in Vault, eg `mycluster: '/clusters/production/mycluster'`
+- a map of clusters `/clusters/${environment}/${clusterSlug}` containing all information specific to a single cluster.  The record will have
+  + A `value` key with a JSON blob of general cluster info, as defined by the schema.
+  + A `channels` key with a JSON array of all channels the cluster belongs to
+- a `/channels/all` record whose `value` is a JSON array of all channels
+- a series of `/channels/${channel}` records whose `value` is a JSON array of `clusterSlug`s, that enumerates all clusters within a given channel
 
 ## API
 
 All `client` methods are async and return Promises.
 
-### getCluster(name)
+### getCluster(slug)
 
 Gets all information about a single cluster.
 
@@ -67,12 +61,10 @@ const cluster = await client.getCluster('some-cluster')
 
 assert.eql(cluster, {
     name: 'some-cluster',
+    environment: 'production',
     props: {
-        key: 'arbitrary'
-    },
-    secretProps: {
         password: 'hunter2'
-    }
+    },
     channels: ['production', 'p100']
 })
 ```
@@ -90,23 +82,23 @@ assert.eql(clusters, [
 ])
 ```
 
-### registerCluster(name, props, [secretProps], [channels])
+### registerCluster(slug, environment, props, [channels])
 
-Registers a single cluster in the system.  `props` go in Redis, `secretProps` go in vault.  You can also optionally list the channels the cluster should be in.  An error will be thrown if any of the channels do not exist.
-
-```js
-await client.addCluster('some-cluster', {key: 'arbitrary'}, {password: 'hunter2'}, ['production'])
-```
-
-### updateCluster(name, newProps, [newSecretProps])
-
-Modify an existing cluster, replacing the existing `props` and `secretProps` with new sets. It is best to `getCluster` beforehand.
+Registers a single cluster in the system.  `props` go in vault.  You can also optionally list the channels the cluster should be in.  An error will be thrown if any of the channels do not exist.
 
 ```js
-await client.updateCluster('some-cluster', {key: 'arbitrary'}, {password: 'hunter3'})
+await client.addCluster('some-cluster', 'staging', {password: 'hunter2'}, ['production'])
 ```
 
-### unregisterCluster(name)
+### updateCluster(slug, newEnvironment, newProps)
+
+Modify an existing cluster, replacing the existing `environment` and/or `props` with new sets. It is best to `getCluster` beforehand.
+
+```js
+await client.updateCluster('some-cluster', 'dev', {password: 'hunter3'})
+```
+
+### unregisterCluster(slug)
 
 Un-register a cluster with the system.  Channel associations will also be removed.
 
@@ -145,7 +137,7 @@ Removes a channel.  Channel must have no clusters associated with it, otherwise 
 await client.removeChannel('integration')
 ```
 
-### addClusterToChannel(name, channel)
+### addClusterToChannel(slug, channel)
 
 Adds a cluster to a channel.  The cluster and channel must exist, otherwise an error is thrown.
 
@@ -153,7 +145,7 @@ Adds a cluster to a channel.  The cluster and channel must exist, otherwise an e
 await client.addClusterToChannel('some-cluster', 'production')
 ```
 
-### removeClusterFromChannel(name, channel)
+### removeClusterFromChannel(slug, channel)
 
 Removes a cluster to from a channel.
 

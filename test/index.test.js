@@ -1,34 +1,30 @@
 const tap = require('tap')
 const nock = require('nock')
-const Redis = require('ioredis')
 const createInfoClient = require('../')
+
+const { NOCK_OFF } = process.env
+
+NOCK_OFF || nock.disableNetConnect()
+
+function mapValues (obj, fn) {
+  const newObj = {}
+  Object.keys(obj).forEach(key => {
+    newObj[key] = fn(obj[key])
+  })
+  return newObj
+}
+
+const stringify = val => (typeof val === 'string')
+  ? val
+  : JSON.stringify(val, null, 2)
+
+const kvGet = (obj) => ({ data: { data: mapValues(obj, stringify) } })
+const kvPut = (obj) => ({ data: mapValues(obj, stringify) })
 
 const createClient = () => createInfoClient({
   vaultHost: process.env.VAULT_ADDR || 'http://vault.dev:8200',
   vaultToken: process.env.VAULT_TOKEN || 's.deadb33f',
   vaultPrefix: process.env.VAULT_PREFIX || 'kv/'
-})
-
-tap.test('check redis', async t => {
-  const redis = new Redis({ maxRetriesPerRequest: 0 })
-  try {
-    await redis.keys('*')
-  } catch (e) {
-    throw new Error('redis-server must be running locally')
-  } finally {
-    redis.disconnect()
-  }
-})
-
-tap.test('empty redis', async t => {
-  const redis = new Redis()
-  await redis.del('channels')
-  const clusters = await redis.keys('cluster:*')
-  await Promise.all(clusters.map(cl => redis.del(cl)))
-  const channels = await redis.keys('channels:*')
-  await Promise.all(channels.map(chan => redis.del(chan)))
-
-  redis.disconnect()
 })
 
 tap.test('create and close a client', async t => {
@@ -43,331 +39,475 @@ tap.test('create and close a client w/ defaults', async t => {
 
 tap.test('channels', async t => {
   const client = createClient()
-  const redis = new Redis()
 
   t.test('createChannel', async t => {
-    await client.createChannel('default')
-    t.same(await redis.smembers('channels'), ['default'])
+    NOCK_OFF && t.test('setup', async t => {
+      await client.createChannel('dummy')
+    })
 
-    await client.createChannel('other')
-    t.same((await redis.smembers('channels')).sort(), ['default', 'other'])
+    t.test('add one', async t => {
+      const vaultMock = nock('http://vault.dev:8200/')
+        .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["dummy"]' }))
+        .put('/v1/kv/data/channels/all', kvPut({ value: ['default', 'dummy'] })).reply(200)
+        .put('/v1/kv/data/channels/default', kvPut({ value: '[]' })).reply(200)
 
-    await client.createChannel('default')
-    t.same((await redis.smembers('channels')).sort(), ['default', 'other'])
+      await client.createChannel('default')
+      vaultMock.done()
+    })
+
+    t.test('add another', async t => {
+      const vaultMock = nock('http://vault.dev:8200/')
+        .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default","dummy"]' }))
+        .put('/v1/kv/data/channels/all', kvPut({ value: ['default', 'dummy', 'other'] })).reply(200)
+        .put('/v1/kv/data/channels/other', { data: { value: '[]' } }).reply(200)
+
+      await client.createChannel('other')
+      vaultMock.done()
+    })
+
+    t.test('add existing', async t => {
+      const vaultMock = nock('http://vault.dev:8200/')
+        .get('/v1/kv/data/channels/all')
+        .reply(200, kvGet({ value: '["default","dummy","other"]' }))
+
+      await client.createChannel('default')
+
+      vaultMock.done()
+      nock.cleanAll()
+    })
+
+    t.test('add "all" is a noop', async t => {
+      await client.createChannel('all')
+    })
   })
 
   t.test('listChannels', async t => {
-    await client.createChannel('production')
+    const vaultMock = nock('http://vault.dev:8200/')
+      .get('/v1/kv/data/channels/all')
+      .reply(200, kvGet({ value: '["default","dummy","other","production"]' }))
+
     const channels = await client.listChannels()
-    t.same(channels, ['default', 'other', 'production'])
+    t.same(channels, ['default', 'dummy', 'other', 'production'])
+    vaultMock.done()
+  })
+
+  t.test('listChannels (no channels)', async t => {
+    if (NOCK_OFF) return
+    const vaultMock = nock('http://vault.dev:8200/')
+      .get('/v1/kv/data/channels/all')
+      .reply(404)
+
+    const channels = await client.listChannels()
+    t.same(channels, [])
+    vaultMock.done()
   })
 
   t.test('deleteChannel', async t => {
+    const vaultMock = nock('http://vault.dev:8200/')
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default","dummy","other","production"]' }))
+      .put('/v1/kv/data/channels/all', kvPut({ value: ['default', 'dummy', 'production'] })).reply(200)
+      .delete('/v1/kv/data/channels/other').reply(200)
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default","dummy","production"]' }))
+
     await client.deleteChannel('other')
-    t.same(await client.listChannels(), ['default', 'production'])
+
+    t.same(await client.listChannels(), ['default', 'dummy', 'production'])
+
+    vaultMock.done()
+    nock.cleanAll()
   })
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
   })
 })
 
 tap.test('registerCluster', async t => {
   const client = createClient()
-  const redis = new Redis()
-
-  t.test('setup', async t => {
-    await client.createChannel('default')
-  })
 
   t.test('works', async t => {
-    const vaultMock = nock('http://vault.dev:8200/', {
-      reqheaders: {
-        'x-vault-token': 's.deadb33f'
-      }
-    })
-      .get('/v1/kv/data/clusters/production/my-cluster')
-      .reply(404)
-      .put('/v1/kv/data/clusters/production/my-cluster', {
-        data: { value: JSON.stringify({ password: 'hunter2' }, null, 2) }
-      })
-      .reply(200)
+    const vaultMock = nock('http://vault.dev:8200/')
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default"]' }))
+      .get('/v1/kv/data/clusters/production/my-cluster').reply(404)
+      .get('/v1/kv/data/channels/default').reply(200, kvGet({ value: '[]' }))
+      .put('/v1/kv/data/channels/default', kvPut({ value: ['my-cluster'] })).reply(200)
+      .put('/v1/kv/data/clusters/production/my-cluster', kvPut({
+        value: { password: 'hunter2' },
+        environment: 'production',
+        channels: ['default']
+      })).reply(200)
+      .get('/v1/kv/data/clusters/all').reply(404)
+      .put('/v1/kv/data/clusters/all', kvPut({
+        value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' }
+      })).reply(200)
 
-    await client.registerCluster('my-cluster', { foo: 'bar' }, { password: 'hunter2' }, ['default'])
+    await client.registerCluster('my-cluster', 'production', { password: 'hunter2' }, ['default'])
 
-    const hash = await redis.hgetall('cluster:my-cluster')
-    t.same(hash, { foo: 'bar', channels: 'default' })
-    const channels = await redis.smembers('channels:default')
-    t.same(channels, ['my-cluster'])
-    vaultMock.done()
-  })
-
-  t.test('works with default params', async t => {
-    const vaultMock = nock('http://vault.dev:8200')
-    await client.registerCluster('my-cluster2', { foo: 'bar' })
-
-    const hash = await redis.hgetall('cluster:my-cluster2')
-    t.same(hash, { foo: 'bar' })
     vaultMock.done()
   })
 
   t.test('fails if channel doesnt exist', async t => {
-    await t.rejects(client.registerCluster('lolfail', { foo: 'bar' }, {}, ['bogus']))
+    const vaultMock = nock('http://vault.dev:8200/')
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default"]' }))
+
+    await t.rejects(
+      client.registerCluster('lolfail', 'production', {}, ['bogus']))
+
+    vaultMock.done()
   })
 
-  process.env.NOCK_OFF || t.test('fails if vault has issues', async t => {
+  t.test('fails if env is not a string', async t => {
+    await t.rejects(client.registerCluster('lolfail', { lol: 'wat' }, {}))
+  })
+
+  NOCK_OFF || t.test('fails if vault has issues', async t => {
     const badClient = createInfoClient({
       vaultHost: 'http://vault.dev:8200', vaultToken: 's.bad'
     })
     const vaultMock = nock('http://vault.dev:8200')
-      .get('/v1/kv/data/clusters/production/lolfail2')
-      .reply(404)
-      .put('/v1/kv/data/clusters/production/lolfail2', {
-        data: { value: JSON.stringify({ password: 'hunter2' }, null, 2) }
-      })
-      .reply(500)
-    await t.rejects(badClient.registerCluster('lolfail2', { foo: 'bar' }, { password: 'hunter2' }))
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default"]' }))
+      .get('/v1/kv/data/clusters/production/lolfail2').reply(404)
+      .put('/v1/kv/data/clusters/production/lolfail2', kvPut({
+        channels: [],
+        environment: 'production',
+        value: { password: 'hunter2' }
+      })).reply(500)
+
+    await t.rejects(badClient.registerCluster('lolfail2', 'production', { password: 'hunter2' }))
     badClient.close()
     vaultMock.done()
   })
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
   })
 })
 
 tap.test('updateCluster', async t => {
   const client = createClient()
-  const redis = new Redis()
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
-      .get('/v1/kv/data/clusters/production/my-cluster')
-      .reply(404)
-      .put('/v1/kv/data/clusters/production/my-cluster', {
-        data: { value: JSON.stringify({ password: 'letmein' }, null, 2) }
-      })
-      .reply({})
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: { 'my-cluster': 'clusters/production/my-cluster' } }))
+      .get('/v1/kv/data/clusters/production/my-cluster').reply(200, kvGet({
+        value: { password: 'hunter2' },
+        environment: 'production'
+      }))
+      .put('/v1/kv/data/clusters/production/my-cluster', kvPut({ value: { password: 'letmein' }, environment: 'production' })).reply({})
 
-    await client.updateCluster('my-cluster', { baz: 1 }, { password: 'letmein' })
+    await client.updateCluster('my-cluster', 'production', { password: 'letmein' })
 
-    const hash = await redis.hgetall('cluster:my-cluster')
-    t.same(hash, { baz: 1, channels: 'default' })
-    vaultMock.done()
-  })
-
-  t.test('works with defaults', async t => {
-    const vaultMock = nock('http://vault.dev:8200')
-      .delete('/v1/kv/data/clusters/production/my-cluster')
-      .reply(200)
-
-    await client.updateCluster('my-cluster', { baz: 1 })
-
-    const hash = await redis.hgetall('cluster:my-cluster')
-    t.same(hash, { baz: 1, channels: 'default' })
     vaultMock.done()
   })
 
   t.test('noop if data is the same', async t => {
     const vaultMock = nock('http://vault.dev:8200')
-      .get('/v1/kv/data/clusters/production/my-cluster')
-      .reply(200, { data: { data: { value: JSON.stringify({ password: 'letmein' }) } } })
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: { 'my-cluster': 'clusters/production/my-cluster' } }))
+      .get('/v1/kv/data/clusters/production/my-cluster').reply(200, kvGet({
+        value: { password: 'letmein' },
+        environment: 'production'
+      }))
 
-    await client.updateCluster('my-cluster', { baz: 1 }, { password: 'letmein' })
+    await client.updateCluster('my-cluster', 'production', { password: 'letmein' })
 
-    const hash = await redis.hgetall('cluster:my-cluster')
-    t.same(hash, { baz: 1, channels: 'default' })
     vaultMock.done()
   })
 
   t.test('fails if cluster does not exist', async t => {
-    await t.rejects(client.updateCluster('nope', { asdf: 'jkl;' }))
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: { 'my-cluster': 'clusters/production/my-cluster' } }))
+
+    await t.rejects(client.updateCluster('nope', 'production', { asdf: 'jkl;' }))
+
+    vaultMock.done()
   })
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
   })
 })
 
 tap.test('unregisterCluster', async t => {
   const client = createClient()
-  const redis = new Redis()
 
-  t.test('setup', async t => {
-    await client.registerCluster('todelete', { deleted: 'very yes' }, {}, ['default'])
+  NOCK_OFF && t.test('setup', async t => {
+    await client.registerCluster('todelete', 'production', { deleted: 'very yes' }, ['default'])
   })
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
-      .delete('/v1/kv/data/clusters/production/todelete')
-      .reply({})
+      .get('/v1/kv/data/clusters/all').times(4).reply(200, kvGet({ value: {
+        'my-cluster': 'clusters/production/my-cluster',
+        'todelete': 'clusters/production/todelete'
+      } }))
+      .delete('/v1/kv/data/clusters/production/todelete').reply({})
+      .get('/v1/kv/data/clusters/production/todelete').reply(200, kvGet({
+        value: { deleted: 'very yes' },
+        environment: 'production',
+        channels: ['default']
+      }))
+      .get('/v1/kv/data/channels/default').reply(200, kvGet({ value: ['todelete', 'my-cluster'] }))
+      .put('/v1/kv/data/channels/default', kvPut({ value: ['my-cluster'] })).reply(200)
+      .put('/v1/kv/data/clusters/all', kvPut({ value: {
+        'my-cluster': 'clusters/production/my-cluster'
+      } })).reply(200)
 
     await client.unregisterCluster('todelete')
 
-    t.equal(await redis.exists('cluster:todelete'), 0)
-    t.equal(await redis.sismember('channels:default', 'todelete'), 0)
     vaultMock.done()
   })
 
   t.test('fails if cluster does not exist', async t => {
-    await t.rejects(client.unregisterCluster('nope'))
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: {
+        'my-cluster': 'clusters/production/my-cluster',
+        'todelete': 'clusters/production/todelete'
+      } }))
+
+    await t.rejects(client.unregisterCluster('nope'), Error, `cluster 'nope' does not exist`)
+    vaultMock.done()
   })
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
+    nock.cleanAll()
   })
 })
 
 tap.test('listClusters', async t => {
   const client = createClient()
-  const redis = new Redis()
 
-  t.test('setup', async t => {
-    await client.registerCluster('my-cluster4', { foo: 1 }, {}, ['default'])
-    await client.registerCluster('my-cluster3', { foo: 1 }, {}, ['default'])
+  NOCK_OFF && t.test('setup', async t => {
+    await client.registerCluster('my-cluster2', 'production', { password: '1234' }, ['default'])
+    await client.registerCluster('my-cluster3', 'production', { password: '1234' }, ['default'])
+    await client.registerCluster('my-cluster4', 'production', { password: '1234' }, ['default'])
   })
 
   t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: {
+        'my-cluster': 'clusters/production/my-cluster',
+        'my-cluster2': 'clusters/production/my-cluster2',
+        'my-cluster3': 'clusters/production/my-cluster3',
+        'my-cluster4': 'clusters/production/my-cluster4'
+      } }))
+
     const clusters = await client.listClusters()
     t.same(clusters, ['my-cluster', 'my-cluster2', 'my-cluster3', 'my-cluster4'])
+
+    vaultMock.done()
   })
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
+    nock.cleanAll()
   })
 })
 
 tap.test('getCluster', async t => {
   const client = createClient()
-  const redis = new Redis()
 
-  t.test('setup', async t => {
+  NOCK_OFF && t.test('setup', async t => {
+    await client.registerCluster('my-cluster', 'production', { password: 'letmein' }, ['default'])
   })
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
-      .get('/v1/kv/data/clusters/production/my-cluster')
-      .reply(200, { data: { data: { value: '{"password":"letmein"}' } } })
-      .get('/v1/kv/data/clusters/production/my-cluster2')
-      .reply(404)
+      .get('/v1/kv/data/clusters/all').times(2).reply(200, kvGet({ value: {
+        'my-cluster': 'clusters/production/my-cluster'
+      } }))
+      .get('/v1/kv/data/clusters/production/my-cluster').reply(200, kvGet({
+        environment: 'production',
+        channels: ['default'],
+        value: { password: 'letmein' }
+      }))
 
     const cluster = await client.getCluster('my-cluster')
     t.same(cluster, {
-      name: 'my-cluster',
       channels: ['default'],
-      baz: 1,
-      secretProps: { password: 'letmein' }
+      environment: 'production',
+      value: { password: 'letmein' }
     })
 
-    const cluster2 = await client.getCluster('my-cluster2')
-    t.same(cluster2, {
-      name: 'my-cluster2',
-      foo: 'bar',
-      secretProps: null
-    })
     vaultMock.done()
   })
 
   t.test('fails if cluster does not exist', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: {
+        'my-cluster': 'clusters/production/my-cluster'
+      } }))
+
     await t.rejects(client.getCluster('bogus'))
+    vaultMock.done()
   })
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
+    nock.cleanAll()
   })
 })
 
 tap.test('addClusterToChannel', async t => {
   const client = createClient()
-  const redis = new Redis()
 
-  t.test('setup', async t => {
+  NOCK_OFF && t.test('setup', async t => {
+    await client.createChannel('production')
   })
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
-      .get('/v1/kv/data/clusters/production/my-cluster3')
-      .reply(200, { data: { data: { value: '{"password":"letmein"}' } } })
+      .get('/v1/kv/data/clusters/all').times(2).reply(200, kvGet({ value: {
+        'my-cluster3': 'clusters/production/my-cluster3'
+      } }))
+      .get('/v1/kv/data/clusters/production/my-cluster3').times(2).reply(200, kvGet({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: ['default']
+      }))
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default', 'production'] }))
+      .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: [] }))
+      .put('/v1/kv/data/channels/production', kvPut({ value: ['my-cluster3'] })).reply(200)
+      .put('/v1/kv/data/clusters/production/my-cluster3', kvPut({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: ['default', 'production']
+      })).reply(200)
+
     await client.addClusterToChannel('my-cluster3', 'production')
 
-    const cluster = await client.getCluster('my-cluster3')
-    t.same(cluster.channels, ['default', 'production'])
-    t.same((await redis.smembers('channels:production')).sort(), ['my-cluster3'])
+    vaultMock.done()
+  })
+
+  t.test('idempotent', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/all').times(2).reply(200, kvGet({ value: {
+        'my-cluster3': 'clusters/production/my-cluster3'
+      } }))
+      .get('/v1/kv/data/clusters/production/my-cluster3').times(2).reply(200, kvGet({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: ['default', 'production']
+      }))
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default', 'production'] }))
+      .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: ['my-cluster3'] }))
+
+    await client.addClusterToChannel('my-cluster3', 'production')
+
     vaultMock.done()
   })
 
   t.test('works with no channels', async t => {
     const vaultMock = nock('http://vault.dev:8200')
-      .get('/v1/kv/data/clusters/production/my-cluster2')
-      .reply(404)
+      .get('/v1/kv/data/clusters/all').times(2).reply(200, kvGet({ value: {
+        'my-cluster2': 'clusters/production/my-cluster2'
+      } }))
+      .get('/v1/kv/data/clusters/production/my-cluster2').times(2).reply(200, kvGet({
+        value: { password: 'letmein' },
+        environment: 'production'
+      }))
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default', 'production'] }))
+      .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: [] }))
+      .put('/v1/kv/data/channels/production', kvPut({ value: ['my-cluster2'] })).reply(200)
+      .put('/v1/kv/data/clusters/production/my-cluster2', kvPut({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: ['production'] })).reply(200)
+
     await client.addClusterToChannel('my-cluster2', 'production')
 
-    const cluster = await client.getCluster('my-cluster2')
-    t.same(cluster.channels, ['production'])
-    t.same((await redis.smembers('channels:production')).sort(), ['my-cluster2', 'my-cluster3'])
     vaultMock.done()
   })
 
   t.test('fails if cluster does not exist', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: {
+        'my-cluster3': 'clusters/production/my-cluster3'
+      } }))
     await t.rejects(client.addClusterToChannel('bogus', 'production'))
+    vaultMock.done()
   })
 
   t.test('fails if channel does not exist', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: {
+        'my-cluster3': 'clusters/production/my-cluster3'
+      } }))
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default'] }))
     await t.rejects(client.addClusterToChannel('my-cluster', 'bogus'))
+    vaultMock.done()
   })
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
+    nock.cleanAll()
   })
 })
 
 tap.test('removeClusterFromChannel', async t => {
   const client = createClient()
-  const redis = new Redis()
-
-  t.test('setup', async t => {
-  })
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
-      .get('/v1/kv/data/clusters/production/my-cluster3')
-      .reply(404)
+      .get('/v1/kv/data/clusters/all').times(2).reply(200, kvGet({ value: {
+        'my-cluster3': 'clusters/production/my-cluster3'
+      } }))
+      .get('/v1/kv/data/clusters/production/my-cluster3').times(2).reply(200, kvGet({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: ['default', 'production']
+      }))
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default', 'production'] }))
+      .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: ['my-cluster3'] }))
+      .put('/v1/kv/data/channels/production', kvPut({ value: [] })).reply(200)
+      .put('/v1/kv/data/clusters/production/my-cluster3', kvPut({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: ['default'] })).reply(200)
+
     await client.removeClusterFromChannel('my-cluster3', 'production')
 
-    const cluster = await client.getCluster('my-cluster3')
-    t.same(cluster.channels, ['default'])
-    t.same((await redis.smembers('channels:production')).sort(), ['my-cluster2'])
     vaultMock.done()
   })
 
   t.test('works with one channel', async t => {
     const vaultMock = nock('http://vault.dev:8200')
-      .get('/v1/kv/data/clusters/production/my-cluster2')
-      .reply(404)
+      .get('/v1/kv/data/clusters/all').times(2).reply(200, kvGet({ value: {
+        'my-cluster2': 'clusters/production/my-cluster2'
+      } }))
+      .get('/v1/kv/data/clusters/production/my-cluster2').times(2).reply(200, kvGet({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: ['production']
+      }))
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default', 'production'] }))
+      .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: ['my-cluster2'] }))
+      .put('/v1/kv/data/channels/production', kvPut({ value: [] })).reply(200)
+      .put('/v1/kv/data/clusters/production/my-cluster2', kvPut({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: [] })).reply(200)
+
     await client.removeClusterFromChannel('my-cluster2', 'production')
 
-    const cluster = await client.getCluster('my-cluster2')
-    t.same(cluster.channels, undefined)
-    t.same((await redis.smembers('channels:production')).sort(), [])
     vaultMock.done()
   })
 
   t.test('works with no channel', async t => {
     const vaultMock = nock('http://vault.dev:8200')
-      .get('/v1/kv/data/clusters/production/my-cluster2')
-      .reply(404)
+      .get('/v1/kv/data/clusters/all').times(2).reply(200, kvGet({ value: {
+        'my-cluster2': 'clusters/production/my-cluster2'
+      } }))
+      .get('/v1/kv/data/clusters/production/my-cluster2').times(2).reply(200, kvGet({
+        value: { password: 'letmein' },
+        environment: 'production',
+        channels: []
+      }))
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: ['default', 'production'] }))
+      .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: [] }))
+
     await client.removeClusterFromChannel('my-cluster2', 'production')
 
-    const cluster = await client.getCluster('my-cluster2')
-    t.same(cluster.channels, undefined)
-    t.same((await redis.smembers('channels:production')).sort(), [])
     vaultMock.done()
   })
 
@@ -381,28 +521,31 @@ tap.test('removeClusterFromChannel', async t => {
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
   })
 })
 
 tap.test('listClustersByChannel', async t => {
   const client = createClient()
-  const redis = new Redis()
 
-  t.test('setup', async t => {
+  NOCK_OFF && t.test('setup', async t => {
     await client.addClusterToChannel('my-cluster', 'production')
     await client.addClusterToChannel('my-cluster2', 'production')
   })
 
   t.test('works', async t => {
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/channels/production').reply(200, kvGet({ value: ['my-cluster', 'my-cluster2'] }))
+
     const results = await client.listClustersByChannel('production')
 
     t.same(results, ['my-cluster', 'my-cluster2'])
+
+    vaultMock.done()
   })
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
+    nock.cleanAll()
   })
 })
 
@@ -444,7 +587,6 @@ const BAD_SA = {
 
 tap.test('addServiceAccount', async t => {
   const client = createClient()
-  const redis = new Redis()
 
   t.test('setup', async t => {
   })
@@ -459,6 +601,7 @@ tap.test('addServiceAccount', async t => {
     await client.addServiceAccount(SA_1)
 
     vaultMock.done()
+    nock.cleanAll()
   })
 
   t.test('fails if missing client_email', async t => {
@@ -468,7 +611,7 @@ tap.test('addServiceAccount', async t => {
   t.test('should be idempotent', async t => {
     const vaultMock = nock('http://vault.dev:8200')
       .get('/v1/kv/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
-      .reply(200, { data: { data: { value: JSON.stringify(SA_1, null, 2) } } })
+      .reply(200, kvGet({ value: JSON.stringify(SA_1, null, 2) }))
 
     await client.addServiceAccount(SA_1)
     vaultMock.done()
@@ -476,21 +619,18 @@ tap.test('addServiceAccount', async t => {
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
   })
 })
 
 tap.test('getServiceAccount', async t => {
   const client = createClient()
-  const redis = new Redis()
-
   t.test('setup', async t => {
   })
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200')
       .get('/v1/kv/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
-      .reply(200, { data: { data: { value: JSON.stringify(SA_1, null, 2) } } })
+      .reply(200, kvGet({ value: JSON.stringify(SA_1, null, 2) }))
 
     const result = await client.getServiceAccount('my-sa1@my-project.iam.gserviceaccount.com')
 
@@ -499,15 +639,26 @@ tap.test('getServiceAccount', async t => {
     vaultMock.done()
   })
 
+  t.test('returns undefined if not found', async t => {
+    if (NOCK_OFF) return
+    const vaultMock = nock('http://vault.dev:8200')
+      .get('/v1/kv/data/credentials/google/my-sa1@my-project.iam.gserviceaccount.com')
+      .reply(404)
+
+    const result = await client.getServiceAccount('my-sa1@my-project.iam.gserviceaccount.com')
+
+    t.same(result, undefined)
+
+    vaultMock.done()
+  })
+
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
   })
 })
 
 tap.test('removeServiceAccount', async t => {
   const client = createClient()
-  const redis = new Redis()
 
   t.test('setup', async t => {
   })
@@ -530,13 +681,11 @@ tap.test('removeServiceAccount', async t => {
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
   })
 })
 
 tap.test('listServiceAccounts', async t => {
   const client = createClient()
-  const redis = new Redis()
 
   t.test('setup', async t => {
   })
@@ -576,14 +725,15 @@ tap.test('listServiceAccounts', async t => {
 
   t.test('cleanup', async () => {
     client.close()
-    redis.disconnect()
   })
 })
 
 tap.test('getCommon', async t => {
+  if (NOCK_OFF) return
   const client = createClient()
   const commonData = { cluster: { default: true } }
   t.test('setup', async t => {
+    // await vault.write(`${vaultPrefix}data/clusters/common/gke`)
   })
 
   t.test('works', async t => {
@@ -610,6 +760,7 @@ tap.test('getCommon', async t => {
 })
 
 tap.test('create client with AppRole', async t => {
+  if (NOCK_OFF) return
   const vaultMock = nock('http://vault.dev:8200')
     .post('/v1/auth/approle/login', {
       role_id: '1234-1234-1243',
@@ -618,8 +769,8 @@ tap.test('create client with AppRole', async t => {
     .reply(200, {
       auth: { client_token: 's.somet0k3n' }
     })
-    .get('/v1/kv/data/clusters/production/my-cluster')
-    .reply(200, { data: { data: { value: '{"password":"letmein"}' } } })
+    .get('/v1/kv/data/clusters/all').times(2).reply(200, kvGet({ value: { 'my-cluster': 'clusters/production/asdf' } }))
+    .get('/v1/kv/data/clusters/production/my-cluster').reply(200, kvGet({ value: '{"password":"letmein"}' }))
 
   const client = createInfoClient({
     vaultHost: process.env.VAULT_HOST || 'http://vault.dev:8200',
@@ -631,13 +782,9 @@ tap.test('create client with AppRole', async t => {
   vaultMock.done()
 })
 
-tap.test('prevent client re-use after close', async t => {
-  const client = createClient()
-  client.close()
-  t.rejects(async () => client.listClusters())
-})
-
 tap.test('issueCertificate', async t => {
+  if (NOCK_OFF) return
+
   const client = createClient()
   t.test('setup', async t => {
   })
