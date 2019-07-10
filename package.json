@@ -1,6 +1,6 @@
 {
   "name": "@npm-wharf/cluster-info-client",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "secure fetch information about clusters",
   "main": "index.js",
   "scripts": {
