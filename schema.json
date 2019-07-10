@@ -92,7 +92,7 @@
   "definitions": {
     "environment": {
       "description": "the broad environment where this cluster lives",
-      "enum": [ "development", "staging", "production" ]
+      "enum": [ "development", "dev", "staging", "production" ]
     },
     "common": {
       "description": "common properties for a cluster",
