@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [2.0.4](https://github.com/npm-wharf/cluster-info-client/compare/v2.0.3...v2.0.4) (2019-07-12)
+
+
+### Bug Fixes
+
+* dont needlessly overwrite data ([0a418c9](https://github.com/npm-wharf/cluster-info-client/commit/0a418c9))
+
+
+
 ## [2.0.3](https://github.com/npm-wharf/cluster-info-client/compare/v2.0.2...v2.0.3) (2019-07-12)
 
 
