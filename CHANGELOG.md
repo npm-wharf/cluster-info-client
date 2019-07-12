@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [2.0.3](https://github.com/npm-wharf/cluster-info-client/compare/v2.0.2...v2.0.3) (2019-07-12)
+
+
+### Bug Fixes
+
+* auth before ensuring cluster exists ([ac2c411](https://github.com/npm-wharf/cluster-info-client/commit/ac2c411))
+
+
+
 ## [2.0.2](https://github.com/npm-wharf/cluster-info-client/compare/v2.0.1...v2.0.2) (2019-07-12)
 
 
