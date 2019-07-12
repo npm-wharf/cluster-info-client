@@ -97,7 +97,7 @@
     "common": {
       "description": "common properties for a cluster",
       "type": "object",
-      "required": ["url", "slug", "projectId", "username", "password", "environment"],
+      "required": ["url", "slug", "projectId", "user", "password", "environment"],
       "properties": {
         "name": {
           "description": "name of the customer",
@@ -124,7 +124,7 @@
           "description": "the human-readable slug for the cluster's project in GCS",
           "type": "string"
         },
-        "username": {
+        "user": {
           "description": "the username for basic auth for the cluster's Kubernetes API",
           "type": "string"
         },
