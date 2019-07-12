@@ -84,7 +84,9 @@ module.exports = function createClient (options = {}) {
     await _saveClusterData(props, slug, environment)
 
     const { value = {} } = await _readVault(_allClustersPath())
-    value[slug] = _secretPath(slug, environment)
+    const path = _secretPath(slug, environment)
+    if (value[slug] === path) return
+    value[slug] = path
     await vault.write(_allClustersPath(), { data: { value: JSON.stringify(value, null, 2) } })
   }
 

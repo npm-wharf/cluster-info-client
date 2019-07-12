@@ -146,6 +146,24 @@ tap.test('registerCluster', async t => {
     vaultMock.done()
   })
 
+  t.test('doesn\'t re-save data if cluster already existed', async t => {
+    const vaultMock = nock('http://vault.dev:8200/')
+      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default"]' }))
+      .get('/v1/kv/data/clusters/production/my-cluster').reply(200, kvGet({
+        value: { password: 'hunter2' },
+        environment: 'production',
+        channels: ['default']
+      }))
+      .get('/v1/kv/data/channels/default').reply(200, kvGet({ value: ['my-cluster'] }))
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({
+        value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' }
+      }))
+
+    await client.registerCluster('my-cluster', 'production', { password: 'hunter2' }, ['default'])
+
+    vaultMock.done()
+  })
+
   t.test('fails if channel doesnt exist', async t => {
     const vaultMock = nock('http://vault.dev:8200/')
       .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default"]' }))
