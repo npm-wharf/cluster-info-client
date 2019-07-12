@@ -246,6 +246,7 @@ module.exports = function createClient (options = {}) {
   }
 
   async function _ensureClusterExists (slug) {
+    await vaultAuth
     const resp = await vault.read(`${vaultPrefix}data/clusters/all`)
     const map = JSON.parse(resp.data.data.value)
     if (!map[slug]) throw new Error(`cluster '${slug}' does not exist`)
@@ -305,8 +306,8 @@ module.exports = function createClient (options = {}) {
   }
 
   async function _readVault (path) {
+    await vaultAuth
     try {
-      await vaultAuth
       var resp = await vault.read(path)
     } catch (err) {
       // istanbul ignore next
