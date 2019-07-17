@@ -12,7 +12,7 @@
         { "$ref": "#/definitions/common" },
         {
           "type": "object",
-          "required": ["credentials", "zones", "masterEndpoint", "organizationId", "billingAccount"],
+          "required": ["zones", "organizationId", "billingAccount"],
           "properties": {
             "clusterName": {
               "description": "the name of the cluster in GKE.  Oftentimes the same as the `slug`, but sometimes post-fixed with a number",
