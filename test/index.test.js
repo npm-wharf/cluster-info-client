@@ -127,15 +127,29 @@ tap.test('registerCluster', async t => {
 
   t.test('works', async t => {
     const vaultMock = nock('http://vault.dev:8200/')
-      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default"]' }))
+      .get('/v1/kv/data/channels/all').times(2).reply(200, kvGet({ value: '["default"]' }))
       .get('/v1/kv/data/clusters/production/my-cluster').reply(404)
+      .get('/v1/kv/data/clusters/production/my-cluster').reply(200, kvGet({
+        value: { password: 'hunter2' },
+        environment: 'production'
+      }))
+      .get('/v1/kv/data/clusters/production/my-cluster').reply(200, kvGet({
+        value: { password: 'hunter2' },
+        environment: 'production'
+      }))
       .get('/v1/kv/data/channels/default').reply(200, kvGet({ value: '[]' }))
       .put('/v1/kv/data/channels/default', kvPut({ value: ['my-cluster'] })).reply(200)
+      .put('/v1/kv/data/clusters/production/my-cluster', kvPut({
+        value: { password: 'hunter2' },
+        environment: 'production'
+      })).reply(200)
       .put('/v1/kv/data/clusters/production/my-cluster', kvPut({
         value: { password: 'hunter2' },
         environment: 'production',
         channels: ['default']
       })).reply(200)
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' } }))
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' } }))
       .get('/v1/kv/data/clusters/all').reply(404)
       .put('/v1/kv/data/clusters/all', kvPut({
         value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' }
@@ -148,14 +162,14 @@ tap.test('registerCluster', async t => {
 
   t.test('doesn\'t re-save data if cluster already existed', async t => {
     const vaultMock = nock('http://vault.dev:8200/')
-      .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default"]' }))
-      .get('/v1/kv/data/clusters/production/my-cluster').reply(200, kvGet({
+      .get('/v1/kv/data/channels/all').times(2).reply(200, kvGet({ value: '["default"]' }))
+      .get('/v1/kv/data/clusters/production/my-cluster').times(3).reply(200, kvGet({
         value: { password: 'hunter2' },
         environment: 'production',
         channels: ['default']
       }))
       .get('/v1/kv/data/channels/default').reply(200, kvGet({ value: ['my-cluster'] }))
-      .get('/v1/kv/data/clusters/all').reply(200, kvGet({
+      .get('/v1/kv/data/clusters/all').times(3).reply(200, kvGet({
         value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' }
       }))
 
@@ -186,7 +200,6 @@ tap.test('registerCluster', async t => {
       .get('/v1/kv/data/channels/all').reply(200, kvGet({ value: '["default"]' }))
       .get('/v1/kv/data/clusters/production/lolfail2').reply(404)
       .put('/v1/kv/data/clusters/production/lolfail2', kvPut({
-        channels: [],
         environment: 'production',
         value: { password: 'hunter2' }
       })).reply(500)

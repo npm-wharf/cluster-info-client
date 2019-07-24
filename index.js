@@ -73,15 +73,14 @@ module.exports = function createClient (options = {}) {
 
     const props = {
       environment,
-      value: secretProps,
-      channels
-    }
-
-    if (channels.length > 0) {
-      await Promise.all(channels.map(chan => _addClusterToChannel(slug, chan)))
+      value: secretProps
     }
 
     await _saveClusterData(props, slug, environment)
+
+    for (const chan of channels) {
+      await addClusterToChannel(slug, chan)
+    }
 
     const { value = {} } = await _readVault(_allClustersPath())
     const path = _secretPath(slug, environment)
