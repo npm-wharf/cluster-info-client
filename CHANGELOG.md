@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [2.0.7](https://github.com/npm-wharf/cluster-info-client/compare/v2.0.6...v2.0.7) (2019-07-24)
+
+
+### Bug Fixes
+
+* don't clobber exisiting channels when registering over an existinc cluster ([477c342](https://github.com/npm-wharf/cluster-info-client/commit/477c342))
+
+
+
 ## [2.0.6](https://github.com/npm-wharf/cluster-info-client/compare/v2.0.5...v2.0.6) (2019-07-17)
 
 
