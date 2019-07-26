@@ -78,15 +78,16 @@ module.exports = function createClient (options = {}) {
 
     await _saveClusterData(props, slug, environment)
 
+    const { value = {} } = await _readVault(_allClustersPath())
+    const path = _secretPath(slug, environment)
+    if (value[slug] !== path) {
+      value[slug] = path
+      await vault.write(_allClustersPath(), { data: { value: JSON.stringify(value, null, 2) } })
+    }
+
     for (const chan of channels) {
       await addClusterToChannel(slug, chan)
     }
-
-    const { value = {} } = await _readVault(_allClustersPath())
-    const path = _secretPath(slug, environment)
-    if (value[slug] === path) return
-    value[slug] = path
-    await vault.write(_allClustersPath(), { data: { value: JSON.stringify(value, null, 2) } })
   }
 
   async function updateCluster (slug, environment, secretProps) {

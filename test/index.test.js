@@ -148,9 +148,9 @@ tap.test('registerCluster', async t => {
         environment: 'production',
         channels: ['default']
       })).reply(200)
-      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' } }))
-      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' } }))
       .get('/v1/kv/data/clusters/all').reply(404)
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' } }))
+      .get('/v1/kv/data/clusters/all').reply(200, kvGet({ value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' } }))
       .put('/v1/kv/data/clusters/all', kvPut({
         value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' }
       })).reply(200)
@@ -158,6 +158,7 @@ tap.test('registerCluster', async t => {
     await client.registerCluster('my-cluster', 'production', { password: 'hunter2' }, ['default'])
 
     vaultMock.done()
+    await nock.cleanAll()
   })
 
   t.test('doesn\'t re-save data if cluster already existed', async t => {
@@ -168,7 +169,7 @@ tap.test('registerCluster', async t => {
         environment: 'production',
         channels: ['default']
       }))
-      .get('/v1/kv/data/channels/default').reply(200, kvGet({ value: ['my-cluster'] }))
+      .get('/v1/kv/data/channels/default').times(1).reply(200, kvGet({ value: ['my-cluster'] }))
       .get('/v1/kv/data/clusters/all').times(3).reply(200, kvGet({
         value: { 'my-cluster': 'kv/data/clusters/production/my-cluster' }
       }))
